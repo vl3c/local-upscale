@@ -1,6 +1,8 @@
 """Faces: detection (OpenCV YuNet), close-up strips for choosing variants, and head mixing."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import cv2
 import numpy as np
 
@@ -8,6 +10,22 @@ from . import config
 from .images import label, resize
 
 Box = tuple[int, int, int, int]  # x, y, w, h
+
+
+@contextmanager
+def _quiet_opencv():
+    """OpenCV 5's new DNN engine warns on every first YuNet load ("Targets are not supported by the
+    new graph engine"), which reads like an error in the job window. Hide warnings, keep errors."""
+    log = getattr(getattr(cv2, "utils", None), "logging", None)
+    if log is None:
+        yield
+        return
+    old = log.getLogLevel()
+    log.setLogLevel(log.LOG_LEVEL_ERROR)
+    try:
+        yield
+    finally:
+        log.setLogLevel(old)
 
 
 def detect(img, max_faces: int = 12, threshold: float = 0.6) -> list[Box]:
@@ -18,8 +36,9 @@ def detect(img, max_faces: int = 12, threshold: float = 0.6) -> list[Box]:
     H, W = img.shape[:2]
     k = min(1.0, 1280 / max(H, W))
     small = cv2.resize(img, (round(W * k), round(H * k)), interpolation=cv2.INTER_AREA)
-    det = cv2.FaceDetectorYN.create(str(config.FACE_MODEL), "", (small.shape[1], small.shape[0]), threshold)
-    _, found = det.detect(small)
+    with _quiet_opencv():
+        det = cv2.FaceDetectorYN.create(str(config.FACE_MODEL), "", (small.shape[1], small.shape[0]), threshold)
+        _, found = det.detect(small)
     picked: list[Box] = []
     for r in sorted(found if found is not None else [], key=lambda r: -r[14]):
         x, y, w, h = (int(v / k) for v in r[:4])

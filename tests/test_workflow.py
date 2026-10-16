@@ -150,10 +150,33 @@ def test_finish_names_sizes_and_model(env, monkeypatch):
     assert bw == 2688 and abs(bw / bh - 400 / 300) < 0.002   # the original's proportions, not Qwen's
     assert seen == {"scale": 2, "model": "3b"}
     assert f"family%20photo_2_final_v2_3b_{tw}x{th}.png" in (d / "compare.html").read_text(encoding="utf-8")
+    assert not (d / "work" / "faces_final_v2_3b.jpg").exists()   # no face found: no close-ups
     with pytest.raises(workflow.WorkflowError, match="original"):
         workflow.finish(photo, 0, log=quiet)
     with pytest.raises(workflow.WorkflowError, match="not found"):
         workflow.finish(photo, 9, log=quiet)
+
+
+def test_finish_writes_face_closeups_of_the_final(env, monkeypatch):
+    photo, _ = env
+    workflow.variants(photo, seeds=[1, 2], log=quiet)
+    monkeypatch.setattr(seedvr2, "upscale", lambda img, scale, *a, **k: (
+        cv2.resize(img, (img.shape[1] * scale, img.shape[0] * scale)),
+        {"tiles": 1, "tile_in": 1008, "seconds": 1, "gpu_peak_mb": 1}))
+    seen = []
+
+    def one_face(img, **k):
+        seen.append(img.shape[:2])
+        return [(img.shape[1] // 3, img.shape[0] // 4, img.shape[1] // 4, img.shape[0] // 3)]
+
+    monkeypatch.setattr(workflow.faces, "detect", one_face)
+    lines = []
+    workflow.finish(photo, 1, model="7b", log=lines.append)
+    tw, th = images.final_size(400, 300)
+    close = config.OUTPUT / "family photo" / "work" / "faces_final_v1_7b.jpg"
+    assert seen == [(th, tw)]                       # found in the final, at the final size
+    assert images.read(close).shape[:2] == (600, 3 * 600)   # original, variant, final
+    assert f"faces: {close}" in lines
 
 
 def test_mix_uses_face_numbers_and_rejects_bad_ones(env, monkeypatch):

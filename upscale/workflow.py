@@ -9,7 +9,8 @@ Layout of output/<photo>/ (the top level is the set to flip through, in viewing 
     <photo>_4_upscaled_vN_<model>_<big>.png          the full SeedVR2 output (2x the Qwen output; 3-4x for very large originals)
     compare.html     opened from disk: flip between all of the above and the variants with keys 1, 2, 3...
     variants/  variant_0_original_*, variant_N_WxH.png, contact_sheet.jpg, faces.jpg (+ faces_numbered.jpg from mix)
-    work/      Qwen's native outputs, variants.json (seeds, photo checksum), SeedVR2 logs, comparisons
+    work/      Qwen's native outputs, variants.json (seeds, photo checksum), SeedVR2 logs, comparisons,
+               faces_final_vN_<model>.jpg (face close-ups: original, variant N, final)
 """
 from __future__ import annotations
 
@@ -255,10 +256,25 @@ def finish(photo: Path, variant: int, full: bool = False, sharpened: bool = True
     save(w / f"compare_original_vs_final_v{n}_{key}.jpg",
          np.hstack([label(to_height(ref, 900), "original"),
                     label(to_height(final, 900), f"final (variant {n}, {key})")]))
+    close = final_faces(w / f"faces_final_v{n}_{key}.jpg", ref, resize(var, tw, th), final, n, key)
     compare.write(d, prefix=stem)
+    if close:
+        log(f"faces: {close}")
     log(f"done: {out}")
     log(f"compare: {d / compare.PAGE}")
     return out
+
+
+def final_faces(path: Path, ref, var, final, n: int, key: str) -> Path | None:
+    """Close-ups of up to three faces in the original, the picked variant and the final, all at the
+    final size, to check that the upscale kept the face. None when no face is found."""
+    found = faces.detect(final)
+    if not found:
+        return None
+    largest = sorted(sorted(found, key=lambda f: -f[2] * f[3])[:3])
+    save(path, faces.strip([ref, var, final], ["original", f"variant {n}", f"final ({key})"],
+                           faces=largest, side=600))
+    return path
 
 
 def crop(photo: Path, inset: float = 0.02, corners=None, out: Path | None = None, log=print) -> Path | None:

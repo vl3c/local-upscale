@@ -58,7 +58,9 @@ error; the full log is in `logs/`.
    $PY scripts/upscale.py finish "input/photo.jpg" --variant 3 --full   # keep the full upscale size
    $PY scripts/upscale.py finish "input/photo.jpg" --variant 3 --model 3b   # another installed upscaler
    ```
-   Read a face crop of the final against the original before reporting. Deliver the paths:
+   Before reporting, Read `output/<photo>/work/faces_final_vN_<model>.jpg` (the finish log prints
+   its path): close-ups of each face in the original, the picked variant and the final, all at the
+   final size. Tell the user if the upscale changed a face. Deliver the paths:
    `<photo>_2_final_vN_<model>_*.png` is the result, `_3_..._sharpened` a crisper copy, and `_4_upscaled_*`
    the full SeedVR2 output. `compare.html` now lists the finals too.
 5. **Any other set of images** you make for a photo (an extra edit in a folder of its own, say):
