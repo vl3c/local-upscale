@@ -14,14 +14,15 @@ Box = tuple[int, int, int, int]  # x, y, w, h
 
 @contextmanager
 def _quiet_opencv():
-    """OpenCV 5's new DNN engine warns on every first YuNet load ("Targets are not supported by the
-    new graph engine"), which reads like an error in the job window. Hide warnings, keep errors."""
+    """OpenCV 5's new DNN engine warns every time YuNet is loaded ("Targets are not supported by the
+    new graph engine"), which reads like an error in the job window. Hide warnings, keep errors
+    (or whatever lower level the user already set)."""
     log = getattr(getattr(cv2, "utils", None), "logging", None)
     if log is None:
         yield
         return
     old = log.getLogLevel()
-    log.setLogLevel(log.LOG_LEVEL_ERROR)
+    log.setLogLevel(min(old, log.LOG_LEVEL_ERROR))
     try:
         yield
     finally:

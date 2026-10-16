@@ -66,3 +66,15 @@ def test_quiet_opencv_hides_warnings_and_restores_the_level():
     with faces._quiet_opencv():
         assert log.getLogLevel() == log.LOG_LEVEL_ERROR
     assert log.getLogLevel() == before
+    try:
+        with faces._quiet_opencv():
+            raise ValueError
+    except ValueError:
+        pass
+    assert log.getLogLevel() == before
+    log.setLogLevel(log.LOG_LEVEL_SILENT)   # a user who silenced OpenCV stays silenced
+    try:
+        with faces._quiet_opencv():
+            assert log.getLogLevel() == log.LOG_LEVEL_SILENT
+    finally:
+        log.setLogLevel(before)

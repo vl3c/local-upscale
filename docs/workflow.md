@@ -78,8 +78,9 @@ also box a hand or a printed face on a shirt). For each replaced face:
 - **Final size:** the original resolution, or 2K on the long side for smaller originals (`--full`
   keeps the whole upscale). The downscale uses area averaging, which keeps the detail and removes
   generative grain.
-- **Face check:** `work/faces_final_vN_<model>.jpg` puts each face of the original, the picked
-  variant and the final side by side at the final size. SeedVR2 keeps geometry well, but it can still
+- **Face check:** `work/faces_final_vN_<model>_<size>.jpg` puts the three largest faces of the
+  original, the picked variant and the final side by side at the final size. Faces are found in the
+  variant, so a face the upscale damaged still gets its row. SeedVR2 keeps geometry well, but it can still
   open an eyelid or sharpen a mouth corner, and that is the first place to look.
 - **Spill guard:** on Windows, running out of VRAM doesn't fail; the driver silently pages into
   system RAM and everything becomes tens of times slower. The SeedVR2 process is watched and

@@ -150,7 +150,7 @@ def test_finish_names_sizes_and_model(env, monkeypatch):
     assert bw == 2688 and abs(bw / bh - 400 / 300) < 0.002   # the original's proportions, not Qwen's
     assert seen == {"scale": 2, "model": "3b"}
     assert f"family%20photo_2_final_v2_3b_{tw}x{th}.png" in (d / "compare.html").read_text(encoding="utf-8")
-    assert not (d / "work" / "faces_final_v2_3b.jpg").exists()   # no face found: no close-ups
+    assert not list((d / "work").glob("faces_final_*"))   # no face found: no close-ups
     with pytest.raises(workflow.WorkflowError, match="original"):
         workflow.finish(photo, 0, log=quiet)
     with pytest.raises(workflow.WorkflowError, match="not found"):
@@ -173,10 +173,24 @@ def test_finish_writes_face_closeups_of_the_final(env, monkeypatch):
     lines = []
     workflow.finish(photo, 1, model="7b", log=lines.append)
     tw, th = images.final_size(400, 300)
-    close = config.OUTPUT / "family photo" / "work" / "faces_final_v1_7b.jpg"
-    assert seen == [(th, tw)]                       # found in the final, at the final size
+    close = config.OUTPUT / "family photo" / "work" / f"faces_final_v1_7b_{tw}x{th}.jpg"
+    assert seen == [(th, tw)]                       # found in the variant, at the final size
     assert images.read(close).shape[:2] == (600, 3 * 600)   # original, variant, final
     assert f"faces: {close}" in lines
+
+    workflow.finish(photo, 1, model="7b", full=True, log=quiet)   # --full: its own file, not this one
+    assert len(list(close.parent.glob("faces_final_v1_7b_*.jpg"))) == 2
+
+    monkeypatch.setattr(workflow.faces, "detect", lambda img, **k: [])
+    workflow.finish(photo, 1, model="7b", log=lines.append)   # no face now: no stale close-ups left
+    assert not close.exists() and lines[-3].startswith("faces: none found")
+
+    def broken(img, **k):
+        raise RuntimeError("detector broke")
+
+    monkeypatch.setattr(workflow.faces, "detect", broken)
+    workflow.finish(photo, 1, model="7b", log=lines.append)   # the check failing never fails finish
+    assert any("face close-ups failed" in s for s in lines) and lines[-2].startswith("done:")
 
 
 def test_mix_uses_face_numbers_and_rejects_bad_ones(env, monkeypatch):

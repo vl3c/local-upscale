@@ -10,7 +10,7 @@ Layout of output/<photo>/ (the top level is the set to flip through, in viewing 
     compare.html     opened from disk: flip between all of the above and the variants with keys 1, 2, 3...
     variants/  variant_0_original_*, variant_N_WxH.png, contact_sheet.jpg, faces.jpg (+ faces_numbered.jpg from mix)
     work/      Qwen's native outputs, variants.json (seeds, photo checksum), SeedVR2 logs, comparisons,
-               faces_final_vN_<model>.jpg (face close-ups: original, variant N, final)
+               faces_final_vN_<model>_<final>.jpg (close-ups of the 3 largest faces: original, variant N, final)
 """
 from __future__ import annotations
 
@@ -256,20 +256,24 @@ def finish(photo: Path, variant: int, full: bool = False, sharpened: bool = True
     save(w / f"compare_original_vs_final_v{n}_{key}.jpg",
          np.hstack([label(to_height(ref, 900), "original"),
                     label(to_height(final, 900), f"final (variant {n}, {key})")]))
-    close = final_faces(w / f"faces_final_v{n}_{key}.jpg", ref, resize(var, tw, th), final, n, key)
+    try:  # an optional check: never let it cost the user a finished result
+        close = final_faces(w / f"faces_final_v{n}_{key}_{tw}x{th}.jpg", ref, resize(var, tw, th), final, n, key)
+        log(f"faces: {close}" if close else "faces: none found, so no close-ups; compare the final by eye")
+    except Exception as e:  # noqa: BLE001
+        log(f"warning: face close-ups failed ({e})")
     compare.write(d, prefix=stem)
-    if close:
-        log(f"faces: {close}")
     log(f"done: {out}")
     log(f"compare: {d / compare.PAGE}")
     return out
 
 
 def final_faces(path: Path, ref, var, final, n: int, key: str) -> Path | None:
-    """Close-ups of up to three faces in the original, the picked variant and the final, all at the
-    final size, to check that the upscale kept the face. None when no face is found."""
-    found = faces.detect(final)
+    """Close-ups of the three largest faces in the original, the picked variant and the final, all at
+    the final size, to check that the upscale kept them. Faces are found in the variant, so a face the
+    upscale damaged still gets its row. None (and no stale file left behind) when no face is found."""
+    found = faces.detect(var)
     if not found:
+        path.unlink(missing_ok=True)
         return None
     largest = sorted(sorted(found, key=lambda f: -f[2] * f[3])[:3])
     save(path, faces.strip([ref, var, final], ["original", f"variant {n}", f"final ({key})"],

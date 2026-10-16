@@ -158,9 +158,9 @@ flipped through in any image viewer:
   `contact_sheet.jpg` and `faces.jpg` (close-ups of up to three faces across all variants). Delete
   the ones you don't want; the overviews only show what's left.
 - `work\` holds the intermediates: Qwen's full-resolution outputs, `variants.json` with the seeds
-  (to reproduce any variant), SeedVR2 logs, and `faces_final_vN_<model>.jpg` from each `finish`:
-  close-ups of the faces in the original, the picked variant and the final, side by side, to check
-  that the upscale kept them.
+  (to reproduce any variant), SeedVR2 logs, and `faces_final_vN_<model>_<size>.jpg` from each
+  `finish`: close-ups of the three largest faces in the original, the picked variant and the final,
+  side by side, to check that the upscale kept them (not written when no face is found).
 
 Every delivered image has exactly the original's proportions.
 
