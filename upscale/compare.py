@@ -14,11 +14,14 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
+from .images import read, save
+
 PAGE = "compare.html"
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".avif"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".jfif", ".webp", ".bmp", ".gif", ".avif"}  # what browsers show
+PREVIEWED = {".tif", ".tiff"}  # an original in these gets a PNG copy the page can show
 OVERVIEWS = {"contact_sheet", "faces", "faces_numbered"}  # side-by-side sheets, not comparable images
 KEYS = list("1234567890") + list("qwertyuiop")
-_ORIGINAL = re.compile(r"(^|_)0_original(_|$)|^original(_|$)", re.I)
+_ORIGINAL = re.compile(r"(^|_)0_original(_|$)|^original$", re.I)
 _SIZE = re.compile(r"_?\d+x\d+(?=_|$)")
 
 
@@ -29,8 +32,8 @@ def _natural(s: str):
 def _images(d: Path) -> list[Path]:
     if not d.is_dir():
         return []
-    return [p for p in d.iterdir()
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS and p.stem.lower() not in OVERVIEWS]
+    return [p for p in d.iterdir() if p.is_file() and p.stem.lower() not in OVERVIEWS and (
+        p.suffix.lower() in IMAGE_EXTS or p.suffix.lower() in PREVIEWED and is_original(p))]
 
 
 def is_original(p: Path) -> bool:
@@ -42,7 +45,7 @@ def collect(d: Path) -> list[Path]:
     (by number), then the rest of `d` (finals sort 1_original, 2_final, 3_sharpened, 4_upscaled).
     A folder with no original of its own (an ad-hoc set inside a photo's folder, say) borrows the
     parent folder's. The original sits both in `d` and in variants/; byte-identical copies appear once."""
-    d = Path(d)
+    d = Path(d).resolve()
     top, var = _images(d), _images(d / "variants")
     found = top + var
     if not any(is_original(p) for p in found):
@@ -82,10 +85,20 @@ def _src(p: Path, d: Path) -> str:
     return quote(rel.as_posix())
 
 
+def _viewable(p: Path, d: Path) -> Path:
+    """`p`, or for a TIFF original a PNG copy of it in `d`/work/ (browsers can't show TIFF)."""
+    if p.suffix.lower() in IMAGE_EXTS:
+        return p
+    out = d / "work" / "compare_original.png"
+    if not out.exists() or out.stat().st_mtime < p.stat().st_mtime:
+        save(out, read(p))
+    return out
+
+
 def write(d: Path, title: str | None = None, prefix: str | None = None) -> Path | None:
     """Write `d`/compare.html for the images in `d` (see `collect`). Returns None if there are none.
     `prefix` (the photo's name) is trimmed from labels; it defaults to the folder's name."""
-    d = Path(d)
+    d = Path(d).resolve()
     items = collect(d)
     if not items:
         return None
@@ -95,7 +108,7 @@ def write(d: Path, title: str | None = None, prefix: str | None = None) -> Path 
         if t in labels[:i]:
             size = _SIZE.search(items[i].stem)
             labels[i] = f"{t} {size.group(0).lstrip('_')}" if size else f"{t} ({items[i].name})"
-    data = [{"src": _src(p, d), "label": t, "file": p.name, "original": is_original(p),
+    data = [{"src": _src(_viewable(p, d), d), "label": t, "file": p.name, "original": is_original(p),
              "key": KEYS[i] if i < len(KEYS) else ""} for i, (p, t) in enumerate(zip(items, labels))]
     fill = {"TITLE": html.escape(title or d.name), "DATA": json.dumps(data).replace("<", "\\u003c")}
     page = re.sub(r"\{(TITLE|DATA)\}", lambda m: fill[m.group(1)], TEMPLATE)
@@ -131,7 +144,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
 .stage{flex:1;min-height:0;overflow:hidden;display:grid;place-items:center;padding:0 16px 12px}
 .stage.zoom{overflow:auto;place-items:start;padding:0}
 .viewer{position:relative;user-select:none;-webkit-user-select:none;touch-action:manipulation;cursor:zoom-in}
-.zoom .viewer{cursor:grab}
+.zoom .viewer{cursor:grab;margin:auto}
 .viewer img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;visibility:hidden;pointer-events:none}
 .viewer img.on{visibility:visible}
 .tag{position:fixed;left:24px;bottom:22px;background:rgba(0,0,0,.65);color:#fff;font:600 13px system-ui,sans-serif;
@@ -142,7 +155,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
 <header>
   <h1>{TITLE}</h1>
   <div class="tabs" id="tabs" role="group" aria-label="Choose image"></div>
-  <span class="hint">1, 2, 3&hellip; or &larr; &rarr; switch &middot; hold the photo or Space: original &middot; Z or double-click: full size</span>
+  <span class="hint">1, 2, 3&hellip; or &larr; &rarr; switch<span id="holdhint"> &middot; hold the photo or Space: original</span> &middot; Z or double-click: full size</span>
 </header>
 <div class="stage" id="stage"><div class="viewer" id="viewer"></div></div>
 <span class="tag" id="tag"></span>
@@ -153,7 +166,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
   var stage = document.getElementById('stage'), tag = document.getElementById('tag');
   var imgs = [], btns = [], cur = 0, shown = 0, zoom = false;
   var orig = ITEMS.findIndex(function(it){ return it.original; });
-  if (orig < 0) orig = 0;
+  if (orig < 0) document.getElementById('holdhint').hidden = true;  // nothing to hold for
   ITEMS.forEach(function(it, i){
     var im = new Image(); im.src = it.src; im.alt = it.label; im.decoding = 'sync';
     im.addEventListener('load', layout);
@@ -178,7 +191,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
     try { history.replaceState(null, '', '#' + (i + 1)); } catch (e) {}
   }
   function ratio(){  // the original's proportions, else the first image that has loaded
-    var order = [orig].concat(imgs.map(function(_, k){ return k; }));
+    var order = (orig < 0 ? [] : [orig]).concat(imgs.map(function(_, k){ return k; }));
     for (var j = 0; j < order.length; j++) { var im = imgs[order[j]]; if (im.naturalWidth) return im.naturalWidth / im.naturalHeight; }
     return 0;
   }
@@ -208,7 +221,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
   viewer.addEventListener('pointerdown', function(e){
     if (e.button !== 0) return;
     down = {x: e.clientX, y: e.clientY, sl: stage.scrollLeft, st: stage.scrollTop, pan: false};
-    viewer.setPointerCapture(e.pointerId); show(orig);
+    viewer.setPointerCapture(e.pointerId); if (orig >= 0) show(orig);
   });
   viewer.addEventListener('pointermove', function(e){
     if (!down || !zoom) return;
@@ -228,7 +241,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
     if (i >= 0) pick(i);
     else if (k === 'arrowright') pick((cur + 1) % n);
     else if (k === 'arrowleft') pick((cur + n - 1) % n);
-    else if (k === ' ') { if (!e.repeat) show(orig); }
+    else if (k === ' ') { if (!e.repeat && orig >= 0) show(orig); }
     else if (k === 'z') setZoom(!zoom);
     else if (k === 'escape' && zoom) setZoom(false);
     else return;

@@ -80,3 +80,28 @@ def test_cli_compare_photo_or_folder(tmp_path, monkeypatch, capsys):
     assert (tmp_path / "output" / "pic" / "compare.html").exists()
     assert cli.main(["compare", str(tmp_path / "output" / "pic" / "variants")]) == 0
     assert cli.main(["compare", str(tmp_path / "input" / "nothing.jpg")]) == 1
+
+
+def test_photo_called_original_and_tiff_original(tmp_path):
+    d = tmp_path / "original"
+    img(d / "original_0_original_40x30.tif", 0)
+    img(d / "variants" / "variant_0_original_40x30.tif", 0)
+    img(d / "variants" / "variant_1_40x30.png", 1)
+    img(d / "original_2_final_v1_7b_2048x1536.png", 2)
+    items = page_items(compare.write(d))
+    assert [i["label"] for i in items] == ["Original", "Variant 1", "Final v1 7b"]
+    assert [i["original"] for i in items] == [True, False, False]
+    assert items[0]["src"] == "work/compare_original.png"           # browsers can't show TIFF
+    assert images.read(d / "work" / "compare_original.png").shape == (30, 40, 3)
+
+
+def test_no_original_and_relative_folder(tmp_path, monkeypatch):
+    d = tmp_path / "photo" / "younger"
+    img(d / "younger_a_40x30.png")
+    monkeypatch.chdir(d)
+    items = page_items(compare.write(Path(".")))
+    assert [i["label"] for i in items] == ["A"] and not items[0]["original"]
+    assert "<title>younger: compare</title>" in (d / "compare.html").read_text(encoding="utf-8")
+    img(tmp_path / "photo" / "photo_0_original_40x30.jpg")
+    assert cli.main(["compare", "."]) == 0
+    assert page_items(d / "compare.html")[0]["src"] == "../photo_0_original_40x30.jpg"

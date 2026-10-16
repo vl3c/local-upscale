@@ -77,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def compare_page(target: Path) -> int:
     from upscale import compare
+    target = target.resolve()
     d = target if target.is_dir() else config.OUTPUT / target.stem
     if not d.is_dir():
         print(f"error: no folder {d}; run `variants` first, or pass a folder of images", file=sys.stderr)
