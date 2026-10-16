@@ -32,9 +32,11 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
    ```
    Run it in the background and tell the user it's running. Then **Read**
    `output/<photo>/variants/contact_sheet.jpg` and `faces.jpg` yourself, and tell the user what
-   differs between the variants: face shape, expression, colour, sharpness, any invented text. Point
-   them at `output/<photo>/variants/`, where variant_0_original and the variants flip in order at the
-   same size. Let them pick.
+   differs between the variants: face shape, expression, colour, sharpness, any invented text. Give
+   them the local path of `output/<photo>/compare.html` (written by every `variants`, `mix` and
+   `finish`): opened from disk, it shows the original and every variant at the same size and place,
+   switched with the keys 1, 2, 3... (hold the photo or Space for the original, Z for full size).
+   Let them pick.
 4. **Finish** the pick (~1-2 min):
    ```bash
    $PY scripts/upscale.py finish "input/photo.jpg" --variant 3          # final = original size, or 2K
@@ -43,7 +45,11 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
    ```
    Read a face crop of the final against the original before reporting. Deliver the paths:
    `<photo>_2_final_vN_<model>_*.png` is the result, `_3_..._sharpened` a crisper copy, and `_4_upscaled_*`
-   the full SeedVR2 output.
+   the full SeedVR2 output. `compare.html` now lists the finals too.
+5. **Any other set of images** you make for a photo (an extra edit in a folder of its own, say):
+   `$PY scripts/upscale.py compare "output/photo/that_folder"` writes a `compare.html` there; a folder
+   without an original of its own borrows the photo's from the folder above. Give the user its path,
+   never an online page with their photos.
 
 ## When faces aren't right
 
