@@ -1,12 +1,13 @@
 """The workflow end to end, with local-image and SeedVR2 replaced by fakes (no GPU needed)."""
 import json
+import threading
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
 
-from upscale import config, images, qwen, seedvr2, workflow
+from upscale import config, images, qwen, seedvr2, window, workflow
 
 
 def quiet(*a):
@@ -20,7 +21,7 @@ def env(tmp_path, monkeypatch):
     photo = tmp_path / "input" / "family photo.jpg"
     rng = np.random.default_rng(5)
     images.save(photo, cv2.GaussianBlur(rng.integers(0, 255, (300, 400, 3), dtype=np.uint8), (0, 0), 3))
-    calls = {"stop": 0, "edit": []}
+    calls = {"stop": 0, "stop_detached": 0, "edit": []}
 
     def fake_edit(prompt, imgs, out_dir, scale, count, seed, timeout=3600):
         calls["edit"].append((prompt, [Path(p).name for p in imgs], scale, count, seed))
@@ -32,12 +33,16 @@ def env(tmp_path, monkeypatch):
             made.append(p)
         return made
 
-    def fake_stop():
-        calls["stop"] += 1
+    def fake_stop(detached=False):
+        calls["stop_detached" if detached else "stop"] += 1
 
     monkeypatch.setattr(qwen, "edit", fake_edit)
     monkeypatch.setattr(qwen, "stop", fake_stop)
     monkeypatch.setattr(qwen, "gpu_used_mb", lambda: 1000)
+    monkeypatch.setattr(window, "CLOSE_GRACE", 0)
+    monkeypatch.setattr(window, "closing", threading.Event())
+    monkeypatch.setattr(window, "_done", threading.Event())
+    monkeypatch.setattr(window, "_on_close", [])
     monkeypatch.setattr(workflow.faces, "detect", lambda img, **k: [])
     return photo, calls
 
@@ -69,6 +74,39 @@ def test_server_stopped_even_when_an_edit_fails(env, monkeypatch):
     assert calls["stop"] == 1
 
 
+def test_close_action_is_registered_only_while_qwen_runs(env, monkeypatch):
+    photo, calls = env
+    edit = qwen.edit
+    seen = []
+
+    def edit_and_look(*a, **k):
+        seen.append(len(window._on_close))
+        return edit(*a, **k)
+
+    monkeypatch.setattr(qwen, "edit", edit_and_look)
+    workflow.variants(photo, seeds=[1, 2], log=quiet)
+    assert seen == [1, 1] and calls["stop"] == 1 and calls["stop_detached"] == 0 and not window._on_close
+    seen.clear()
+    workflow.variants(photo, seeds=[1, 2], keep_server=True, log=quiet)
+    assert seen == [0, 0] and calls["stop"] == 1 and not window._on_close
+
+
+def test_closing_the_window_stops_local_image(env, monkeypatch):
+    """Closing the window kills local-image's client, so the edit fails and the finally runs while
+    the console handler runs too: the handler's detached stop must happen, and only once."""
+    photo, calls = env
+
+    def closed(*a, **k):
+        threading.Thread(target=window._run_close_actions).start()  # the handler, on its own thread
+        raise qwen.QwenError("local-image edit failed (exit 3221225786)")
+
+    monkeypatch.setattr(window, "CLOSE_GRACE", 2)
+    monkeypatch.setattr(qwen, "edit", closed)
+    with pytest.raises(qwen.QwenError):
+        workflow.variants(photo, seeds=[1, 2], log=quiet)
+    assert calls["stop_detached"] == 1 and calls["stop"] == 0
+
+
 def test_rerun_after_deleting_work_never_overwrites(env):
     photo, _ = env
     workflow.variants(photo, seeds=[1, 2], log=quiet)
@@ -94,7 +132,7 @@ def test_finish_names_sizes_and_model(env, monkeypatch):
     workflow.variants(photo, seeds=[1, 2], log=quiet)
     seen = {}
 
-    def fake_upscale(img, scale, log_path, model=None):
+    def fake_upscale(img, scale, log_path, model=None, progress=print):
         seen.update(scale=scale, model=model)
         h, w = img.shape[:2]
         return cv2.resize(img, (w * scale, h * scale)), {"tiles": 2, "tile_in": 1008, "seconds": 1,

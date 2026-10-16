@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import compare, config, faces, prompts, qwen, seedvr2
+from . import compare, config, faces, prompts, qwen, seedvr2, window
 from .images import (final_size, grid, label, qwen_scale, read, resize, save, sr_factor, to_height,
                      unsharp)
 
@@ -109,6 +109,10 @@ def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: 
     seeds = seeds or [random.randrange(1, 2**31) for _ in range(2)]
     prompt = prompts.pick(colorize, bool(refs))
     tmp = w / "_qwen"
+    # local-image's server lives in its own window, so closing the job's window doesn't stop it, and
+    # the close can end this process before or during the finally below: stop it from the console
+    # close handler too (window.on_close explains the order of the finally below).
+    cancel = None if keep_server else window.on_close(lambda: qwen.stop(detached=True))
     try:
         for seed in seeds:  # 2 batches of 2: one batch of 4 at 2048 px overflows 16 GB and crawls
             log(f"Qwen edit: seed {seed}, scale {scale}")
@@ -125,7 +129,9 @@ def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: 
                 log(f"  variant {n}")
     finally:
         if not keep_server:
-            qwen.stop()
+            if not window.closing.wait(window.CLOSE_GRACE):  # closing: the handler stops it
+                qwen.stop()
+            cancel()  # only now, so a close during the stop still finds the handler's action
         shutil.rmtree(tmp, ignore_errors=True)
     write_overviews(photo)
     log(f"done: {v}")
@@ -228,7 +234,7 @@ def finish(photo: Path, variant: int, full: bool = False, sharpened: bool = True
     key = model or config.default_upscaler()
     _free_gpu(log)
     log(f"SeedVR2 {key} x{s}: {vw}x{vh} -> {vw * s}x{vh * s}")
-    big, stats = seedvr2.upscale(var, s, w / f"seedvr2_v{n}_{key}.log", model=key)
+    big, stats = seedvr2.upscale(var, s, w / f"seedvr2_v{n}_{key}.log", model=key, progress=log)
     log(f"  {stats['tiles']} tile(s) of {stats['tile_in']} px in {stats['seconds']} s, "
         f"GPU peak {stats['gpu_peak_mb']} MB" + (f" ({stats['guard']})" if "guard" in stats else ""))
     UW = vw * s

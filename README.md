@@ -96,6 +96,21 @@ gets its own folder in `output\`.
 .venv\Scripts\python.exe scripts\upscale.py finish input\photo.jpg --variant 3
 ```
 
+**The GPU steps run in their own window.** `variants` and `finish` hold the GPU for minutes, so they
+never run out of sight: each opens a console window titled "local-upscale variants photo.jpg - close
+this window to stop it", which shows the job's progress (each Qwen edit and variant, SeedVR2's phases
+and tiles) and any errors. The command you ran waits, echoes the same lines, and exits with the job's
+result, so it works the same from a script. To stop a job, **close its window**: that ends the job and
+everything it started and frees the GPU and RAM; `variants` also stops local-image's server, as it does
+when it finishes. `stop.cmd` does the same without the window, and so does Ctrl+C in the command you
+ran. If a job fails on its own, its window stays up for a minute so the error can be read. Only one
+GPU job runs at a time; a second one refuses to start. Each job's full log is kept in `logs\` (the
+last 50).
+
+```powershell
+.\stop.cmd      # stop a running variants or finish job and free the GPU
+```
+
 Options and extra steps (`upscale.py` below means `.venv\Scripts\python.exe scripts\upscale.py`):
 
 ```powershell
@@ -164,7 +179,8 @@ Every delivered image has exactly the original's proportions.
 ## Privacy
 
 Everything runs locally. Your photos are read from wherever you point the tool; results are written
-under `output\`, and `crop` writes its straightened copy into `input\`. local-image keeps its own
+under `output\`, and `crop` writes its straightened copy into `input\`. The job logs in `logs\` name
+your photos and folders. local-image keeps its own
 copies too: each photo it edits in its `ComfyUI\input\` folder, and every generated variant (with the
 prompt and workflow embedded) in its `ComfyUI\output\` folder. Clear those if that matters to you.
 `input\`, `output\`, every image and video file type, the weights and the environments are all
@@ -185,7 +201,9 @@ See [LICENSE-MODELS.md](LICENSE-MODELS.md).
 
 ```
 upscale/            the package: workflow, Qwen (local-image) wrapper, SeedVR2 tiling, faces, crop, compare.html
-scripts/upscale.py  the command line
+scripts/upscale.py  the command line (variants and finish run in their own window: upscale/window.py)
+scripts/logtee.py   runs a job in its window: logs everything, shows what matters (from local-image)
+stop.cmd            stop a running job and free the GPU
 scripts/download_models.py   pinned, checksum-verified weight downloads (models.json)
 scripts/check_repo_safe.py   pre-publish safety check
 SKILL.md            instructions for Claude Code (the local-upscale skill)
@@ -194,5 +212,5 @@ tests/              run without a GPU: python -m pytest
 install.ps1         setup
 ```
 
-Created on install and ignored by git: `engine\` (the SeedVR2 CLI), `models\`, `.venv\`, `.cache\`,
-`input\`, `output\`.
+Created on install or by running, and ignored by git: `engine\` (the SeedVR2 CLI), `models\`, `.venv\`,
+`.cache\`, `input\`, `output\`, `logs\`.

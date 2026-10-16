@@ -82,6 +82,37 @@ also box a hand or a printed face on a shirt). For each replaced face:
   system RAM and everything becomes tens of times slower. The SeedVR2 process is watched and
   stopped if VRAM stays pinned at the limit while the GPU draws little power.
 
+### The job window
+
+`variants` and `finish` run in their own console window, the way local-image runs its server, so
+nothing holds the GPU out of sight (`upscale/window.py`). The command you type relaunches itself as
+`upscale.py --in-window ...` in a new console, through `scripts/logtee.py` (local-image's, plus a
+window title and a one-minute hold after a failure), and then echoes the job's log
+(`logs/<time>_<pid>_<command>_<photo>.log`) until logtee records the exit code.
+
+- **Closing the window** stops the job: Windows ends every process attached to the console, which
+  covers the job, the SeedVR2 engine and local-image's client. local-image's server runs in its
+  own window, so `variants` also registers a console close handler that starts local-image's
+  stop.cmd outside the closing console (Windows allows a handler about 5 seconds). The close
+  kills local-image's client at the same moment, so the job's own cleanup gives the handler half
+  a second to show up, and withdraws it only after its own stop (tested by closing a
+  pseudoconsole, which is what a Windows Terminal tab is). If the command that started the job
+  is still waiting, it stops the server too once it sees the window gone.
+- **Started apart:** the window is opened by a short-lived Python, outside the starting
+  command's process tree and job object (as local-image's start.cmd does with `start`), so
+  killing that command, as an agent ending a background task does, leaves the job on screen
+  for the user rather than ending it unseen.
+- **`stop.cmd`** (`upscale.py stop`) finds this install's job windows by their command line
+  (junctions resolved), writes `<log>.stop` so the window closes at once instead of holding,
+  kills the job's process tree, and stops local-image's server if the job was `variants`.
+- **One job at a time:** the GPU can't hold two, so a second `variants` or `finish` refuses to
+  start while another job's window still has a running job (checked under a lock in `logs/`, so
+  two starts at once can't both pass). A window held open after a failure doesn't count.
+- **Ctrl+C** in the window ends the job without the one-minute hold; Ctrl+C in the command that
+  started it stops the job through `stop`.
+- SeedVR2's own output still goes to `work/seedvr2_*.log`; its phases and tiles are echoed into
+  the window as progress.
+
 ### Crop (prints)
 
 For photos of prints lying on a table, or scans showing the scanner lid: `crop` finds the print's
