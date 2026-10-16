@@ -1,6 +1,6 @@
 ---
 name: local-upscale
-description: Restore, clean up, colorize and upscale old photos locally on this machine's GPU: removes blur, noise, JPEG artefacts and colour casts with a Qwen-Image instruction edit (through the local-image tool), offers 4 variants to choose from (faces differ per variant), can mix faces between variants and use other photos of the same people as identity references, then upscales the pick with SeedVR2-7B and delivers it at the original resolution (or 2K for small originals). Also colorizes black-and-white photos and straightens/crops photographed prints. Use when the user asks to restore, enhance, sharpen, fix, colorize or upscale a photo or picture locally. Not for video, and not for generating new images (use local-image for that).
+description: Restore, clean up, colorize and upscale old photos locally on this machine's GPU: removes blur, noise, JPEG artefacts and colour casts with a Qwen-Image instruction edit (through the local-image tool), offers 4 variants to choose from (faces differ per variant), can mix faces between variants and use other photos of the same people as identity references, then upscales the pick with SeedVR2 (7B by default; 7B-sharp or 3B if installed) and delivers it at the original resolution (or 2K for small originals). Also colorizes black-and-white photos and straightens/crops photographed prints. Use when the user asks to restore, enhance, sharpen, fix, colorize or upscale a photo or picture locally. Not for video, and not for generating new images (use local-image for that).
 ---
 
 # local-upscale: restore and upscale photos on the local GPU
@@ -20,7 +20,7 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
 
 ## The loop
 
-1. **Check the GPU** (`nvidia-smi`). local-image needs ~15.5 GB and SeedVR2 ~14 GB, one at a time.
+1. **Check the GPU** (`nvidia-smi`). local-image needs ~15.5 GB and SeedVR2 ~13 GB (3B ~10 GB), one at a time.
    If another program holds the GPU, ask the user before stopping anything (use the `local-gpu`
    skill if it's installed). Never kill processes you didn't start.
 2. **Photo location.** Users drop photos in `input/`; any path works. Results go to `output/<photo>/`.
@@ -39,9 +39,10 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
    ```bash
    $PY scripts/upscale.py finish "input/photo.jpg" --variant 3          # final = original size, or 2K
    $PY scripts/upscale.py finish "input/photo.jpg" --variant 3 --full   # keep the full upscale size
+   $PY scripts/upscale.py finish "input/photo.jpg" --variant 3 --model 3b   # another installed upscaler
    ```
    Read a face crop of the final against the original before reporting. Deliver the paths:
-   `<photo>_2_final_vN_*.png` is the result, `_3_..._sharpened` a crisper copy, and `_4_upscaled_*`
+   `<photo>_2_final_vN_<model>_*.png` is the result, `_3_..._sharpened` a crisper copy, and `_4_upscaled_*`
    the full SeedVR2 output.
 
 ## When faces aren't right

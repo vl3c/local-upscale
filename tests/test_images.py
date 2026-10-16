@@ -28,11 +28,19 @@ def test_sr_factor_bounds():
     assert images.sr_factor((9000, 9000), (1000, 1000)) == 4   # capped
 
 
-@pytest.mark.parametrize("size,tile,step", [(2368, 1024, 896), (1024, 1024, 896), (1100, 1024, 896), (5000, 448, 384)])
-def test_tile_positions_cover_everything(size, tile, step):
-    pos = images.tile_positions(size, tile, step)
+@pytest.mark.parametrize("size,tile,ov", [(2368, 1024, 128), (1024, 1024, 128), (1100, 1024, 128),
+                                          (5000, 682, 128), (1040, 1024, 128), (300, 300, 75)])
+def test_tile_positions_cover_evenly(size, tile, ov):
+    pos = images.tile_positions(size, tile, ov)
     assert pos[0] == 0 and pos[-1] + tile == size
-    assert all(b - a <= step for a, b in zip(pos, pos[1:]))
+    gaps = [b - a for a, b in zip(pos, pos[1:])]
+    assert all(tile - g >= ov for g in gaps)          # every overlap is at least ov
+    assert not gaps or max(gaps) - min(gaps) <= 1      # evenly spaced, no thin last tile
+
+
+def test_tile_positions_minimal_count():
+    assert images.tile_positions(1100, 1024, 128) == [0, 76]
+    assert len(images.tile_positions(2368, 1024, 128)) == 3
 
 
 def test_ramp_partitions_unity_across_an_overlap():

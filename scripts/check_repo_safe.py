@@ -27,7 +27,8 @@ BANNED_SUFFIXES = {
     ".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf", ".onnx",
     ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif", ".gif",
     ".heic", ".avif", ".psd", ".cr2", ".dng", ".arw", ".nef", ".raw",
-    ".mp4", ".webm", ".mov",
+    ".mp4", ".webm", ".mov", ".mkv", ".avi",
+    ".heif", ".jfif", ".jxl", ".cr3", ".orf", ".rw2", ".npy", ".npz", ".zip", ".7z", ".rar",
     ".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".pcm",
     ".db", ".sqlite", ".sqlite3", ".log", ".key", ".pem", ".pfx", ".p12",
 }
@@ -41,6 +42,10 @@ ALLOWED_IMAGE_DIRS = ("docs/img/",)
 PATTERNS = [
     # Local paths. Both separators, trailing slash optional.
     ("Windows user path", re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9._-]+", re.I)),
+    # Any other absolute drive path with at least two folders, e.g. a photo library on D:.
+    # Folder names may contain spaces, and either separator may be used.
+    ("absolute drive path", re.compile(
+        r"\b[A-Za-z]:[\\/]{1,2}(?!Users\b)[A-Za-z0-9._-][^\\/:*?\"<>|\r\n`']*?[\\/]{1,2}[A-Za-z0-9._-]+")),
     ("UNC path", re.compile(r"\\\\[A-Za-z0-9._-]+\\[A-Za-z0-9._$-]+")),
     ("Unix home path", re.compile(r"/(?:home|Users)/[A-Za-z0-9._-]+")),
     # Identity. Local part must start alphanumeric, or a diff line like
@@ -79,6 +84,10 @@ ALLOWED = [
     "@users.noreply.github.com",
     "C:\\Users\\<you>",
     "C:\\Users\\you",
+    # placeholder paths in the docs and installer examples
+    "D:\\path\\to",
+    "D:\\old\\seedvr2",
+    "D:\\other\\models",
     "127.0.0.1",
     "0.0.0.0",
 ]

@@ -9,9 +9,9 @@ licence:
 |---|---|---|
 | **Qwen-Image-2.1** (through [local-image](https://github.com/vl3c/local-image), a separate install) | **Qwen Research License: research or evaluation purposes only** | Step 1: clean-up / colorize edits |
 | SeedVR2 CLI ([numz/ComfyUI-SeedVR2_VideoUpscaler](https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler)) | Apache-2.0 | Cloned into `engine\SeedVR2`, run as a separate process |
-| SeedVR2-7B weights (ByteDance Seed; FP8 repack by numz / AInVFX on Hugging Face) | Apache-2.0 | Step 3: upscaling |
+| SeedVR2 7B / 7B-sharp / 3B weights, whichever you install (ByteDance Seed; FP8 repacks by numz / AInVFX on Hugging Face) | Apache-2.0 | Step 3: upscaling |
 | YuNet face detector ([OpenCV Zoo](https://github.com/opencv/opencv_zoo)) | MIT | Face close-ups and face positions for `mix` |
-| PyTorch, OpenCV, NumPy and the SeedVR2 Python dependencies | BSD / Apache-2.0 / MIT family | Installed into `.venv` from PyPI and the PyTorch index |
+| PyTorch, OpenCV, NumPy and the SeedVR2 Python dependencies | Their own permissive or weak-copyleft licences (BSD, Apache-2.0, MIT, MPL-2.0, the Matplotlib licence); the CUDA libraries inside the PyTorch wheels are under NVIDIA's CUDA EULA | Installed into `.venv` from PyPI and the PyTorch index |
 
 ## What the Qwen licence means for your results
 

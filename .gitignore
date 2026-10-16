@@ -22,8 +22,22 @@ temp/
 *.heic
 *.heif
 *.avif
+*.jfif
+*.jxl
+*.psd
+*.cr2
+*.cr3
+*.nef
+*.arw
+*.dng
+*.raw
+*.orf
+*.rw2
 *.mkv
 *.mp4
+*.mov
+*.avi
+*.webm
 
 # --- everything install.ps1 creates -------------------------------------------
 engine/

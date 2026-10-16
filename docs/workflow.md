@@ -8,7 +8,7 @@ black-and-white prints. This page records what the pipeline does, why, and what 
 
 ```
 photo ──► [crop]  ──► variants (Qwen-Image edit, 4x) ──► you pick ──► [mix faces] ──► finish
-           prints       clean-up / colorize                              SeedVR2-7B x2..4 ─► area downscale
+           prints       clean-up / colorize                              SeedVR2 x2..4    ─► area downscale
 ```
 
 ### 1. Variants: Qwen-Image instruction edit
@@ -52,7 +52,7 @@ also box a hand or a printed face on a shirt). For each replaced face:
 - it is colour-matched in LAB to the base and feather-blended;
 - nothing below the chin is replaced, so collars and clothes always stay consistent.
 
-### 3. Finish: SeedVR2-7B upscale and downscale
+### 3. Finish: SeedVR2 upscale and downscale
 
 - **SeedVR2** is a one-step diffusion super-resolution model. It was built for video, so a still is
   cut into square tiles, written as a short lossless FFV1 video, and run through its own CLI with
@@ -61,9 +61,15 @@ also box a hand or a printed face on a shirt). For each replaced face:
   context: faces come out soft and grainy. No seams were visible with 1024 px tiles.
 - **7B mixed FP8** (`seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16`): the most faithful SeedVR2
   variant. It keeps the geometry of its input, so the chosen face survives while fine detail is
-  added. The plain 7B FP8 file is known to produce artefacts; the "sharp" 7B variant is crisper but
-  less faithful.
-- **Factor:** at least 2x, so the final is always supersampled; up to 4x when the original is small.
+  added. This is the default. The plain 7B FP8 file is known to produce artefacts; the "sharp" 7B variant is crisper but
+  less faithful. Other upscalers can be installed alongside (`install.ps1 -Upscaler 7b,3b`) and picked
+  per run with `finish --model`: `7b-sharp` (crisper) or `3b` (about 40% faster, ~10 GB VRAM, invents
+  more). The model's name is part of every output file name, so results from different models never
+  overwrite each other.
+- **Factor:** 2x for almost every photo. Only originals wider than ~4700 px (where 2x of Qwen's ~2368 px output
+  would fall short of the original size) get 3x or 4x, with smaller tiles (682 / 512 px; at 512 px faces have less context, but such large originals
+  rarely have small faces) so each upscaled tile stays
+  at 2048 px and fits in 16 GB; beyond 4x (originals over ~9500 px) the rest is a plain Lanczos resize.
 - **Final size:** the original resolution, or 2K on the long side for smaller originals (`--full`
   keeps the whole upscale). The downscale uses area averaging, which keeps the detail and removes
   generative grain.
@@ -86,8 +92,8 @@ ordinary photo with a strong straight line near the border it can produce a wron
 |---|---|---|
 | 4 variants, 2592x1944 photo (Qwen at 2048) | ~8 min | ~15.5 GB |
 | 4 variants, ~600x480 photo (Qwen at 1024) | ~3 min | ~15 GB |
-| Finish, 2368x1760 Qwen output x2 (6 tiles) | ~75 s | ~12 GB |
-| Finish, 1120x960 x2 (2 tiles) | ~40 s | ~12 GB |
+| Finish, 2368x1760 Qwen output x2 (6 tiles) | ~75 s | ~12-13 GB |
+| Finish, 1120x960 x2 (2 tiles), 7B / 3B | ~37 s / ~21 s | ~13 GB / ~10 GB |
 
 ## Tried and dropped
 

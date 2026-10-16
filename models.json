@@ -1,6 +1,7 @@
 {
   "_comment": [
     "Everything install.ps1 / scripts/download_models.py fetches, pinned by commit and SHA-256.",
+    "Pick upscalers at install time (install.ps1 -Upscaler 7b,3b); 'shared' files are always fetched.",
     "Nothing listed here is redistributed by this repo; see LICENSE-MODELS.md for each licence."
   ],
   "engine": {
@@ -10,16 +11,37 @@
     "dest": "engine/SeedVR2",
     "license": "Apache-2.0"
   },
-  "files": [
-    {
+  "default_upscaler": "7b",
+  "upscalers": {
+    "7b": {
       "name": "seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors",
       "url": "https://huggingface.co/AInVFX/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors",
       "dest": "models/seedvr2",
       "bytes": 8466296338,
       "sha256": "3d68b5ec0b295ae28092e355c8cad870edd00b817b26587d0cb8f9dd2df19bb2",
       "license": "Apache-2.0",
-      "note": "SeedVR2 7B diffusion transformer, FP8 with the last block in FP16 (the plain 7B FP8 file shows artefacts)."
+      "note": "SeedVR2 7B, FP8 with the last block in FP16. Most faithful; recommended. ~13 GB VRAM peak at 1024 px tiles."
     },
+    "7b-sharp": {
+      "name": "seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+      "url": "https://huggingface.co/AInVFX/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+      "dest": "models/seedvr2",
+      "bytes": 8466296338,
+      "sha256": "0d2c5b8be0fda94351149c5115da26aef4f4932a7a2a928c6f184dda9186e0be",
+      "license": "Apache-2.0",
+      "note": "SeedVR2 7B 'sharp' variant: crisper, slightly less faithful to the input."
+    },
+    "3b": {
+      "name": "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+      "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+      "dest": "models/seedvr2",
+      "bytes": 3391544696,
+      "sha256": "3bf1e43ebedd570e7e7a0b1b60d6a02e105978f505c8128a241cde99a8240cff",
+      "license": "Apache-2.0",
+      "note": "SeedVR2 3B FP8: smaller download and faster, but invents more detail than 7B."
+    }
+  },
+  "shared": [
     {
       "name": "ema_vae_fp16.safetensors",
       "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
@@ -27,7 +49,7 @@
       "bytes": 501324814,
       "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1",
       "license": "Apache-2.0",
-      "note": "SeedVR2 VAE."
+      "note": "SeedVR2 VAE, used by every upscaler."
     },
     {
       "name": "face_detection_yunet_2023mar.onnx",

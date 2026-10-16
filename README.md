@@ -19,12 +19,12 @@ The pipeline came out of side-by-side testing of many upscalers on real family p
    different with every random seed, so you get **4 variants** to choose from.
 2. **You pick** the variant where the people look most like themselves. Optionally, you can **mix**
    faces: keep one variant and take a particular person's face from another.
-3. **Upscale: SeedVR2-7B.** The chosen variant is upscaled 2x (more for small photos) by SeedVR2, a
+3. **Upscale: SeedVR2 (7B by default).** The chosen variant is upscaled 2x (3-4x only for very large originals) by SeedVR2, a
    one-step diffusion super-resolution model. It works in overlapping 1024 px tiles, fully on the
    GPU. It keeps the geometry, so the face you picked stays the same, while it adds fine detail
    (eyelashes, hair strands, skin, fabric).
 4. **Downscale** with area averaging to the original resolution, or to 2K when the original is
-   smaller. Rendering at 2x and averaging down keeps the detail and removes generative grain.
+   smaller. Rendering larger and averaging down keeps the detail and removes generative grain.
 
 There's also **colorize** mode for black-and-white photos, **identity references** (other photos of
 the same people, which help a lot when faces are tiny), and **crop** for photographed or scanned
@@ -33,13 +33,14 @@ prints.
 ## Requirements
 
 - **Windows 10/11** and an **NVIDIA GPU with 16 GB of VRAM.** Developed on an RTX 5080. Both models
-  run fully in VRAM, with no CPU offload. local-image needs about 15.5 GB and SeedVR2-7B about 14 GB,
-  one at a time; the tool stops one before starting the other.
+  run fully in VRAM, with no CPU offload. local-image needs about 15.5 GB and SeedVR2-7B about 13 GB (3B ~10 GB),
+  one at a time; the tool stops local-image's server before SeedVR2 starts.
 - **[local-image](https://github.com/vl3c/local-image)** installed and working. It brings Qwen-Image
   and ComfyUI (~30 GB). By default it is expected at `~\.claude\skills\local-image`; otherwise set
   `LOCAL_IMAGE_DIR` or put `{"local_image_dir": "D:\\path\\to\\local-image"}` in `config.local.json`.
 - **Python 3.13** (with the `py` launcher) and **git**.
-- About **20 GB** of disk: SeedVR2-7B weights ~9 GB, the venv ~6 GB.
+- About **20 GB** of disk: 8.4 GB for the default upscaler (7B weights + VAE), the venv ~6 GB, and
+  ~3 GB of pip cache in `.cache\` (safe to delete after installing).
 
 ## Install
 
@@ -52,8 +53,26 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 The installer:
 - clones the SeedVR2 CLI at a pinned commit into `engine\`;
 - builds `.venv\` (PyTorch from the CUDA 13.0 wheel index);
-- downloads the SeedVR2-7B weights and a small face detector into `models\`, checksum-verified;
+- downloads the chosen upscaler weights, the SeedVR2 VAE and a small face detector into `models\`,
+  checksum-verified;
 - links the folder into `~\.claude\skills\local-upscale` for Claude Code (skip with `-NoSkillLink`).
+
+**Choosing the upscaler.** `-Upscaler` picks which SeedVR2 model(s) to download:
+
+| | Size | |
+|---|---|---|
+| `7b` (default) | 7.9 GB | Most faithful to the restored photo; ~13 GB VRAM peak. Recommended. |
+| `7b-sharp` | 7.9 GB | Crisper, slightly less faithful. |
+| `3b` | 3.2 GB | About 40% faster and lighter on VRAM (~10 GB), but invents more detail. |
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Upscaler 7b,3b   # both; the first is the default
+```
+
+Switch per run with `finish --model 3b`. To add one later, run
+`.venv\Scripts\python.exe scripts\download_models.py --upscaler 7b-sharp`; note that the first one
+named becomes the default. The image-repair step always goes through local-image and needs no
+download here.
 
 If you already have the SeedVR2 weights somewhere, use `-ReuseModels <folder>` to hard-link them
 instead of downloading. Re-running the installer is safe. Check the setup at any time with:
@@ -104,9 +123,9 @@ flipped through in any image viewer:
 |---|---|
 | `<photo>_0_original_WxH.jpg` | the untouched original |
 | `<photo>_1_original_<final>.png` | the original enlarged to the final size (small originals only) |
-| `<photo>_2_final_vN_<final>.png` | **the result**: original resolution, or 2K |
-| `<photo>_3_final_vN_<final>_sharpened.png` | the same with a light unsharp mask |
-| `<photo>_4_upscaled_vN_<big>.png` | the full SeedVR2 output (about 2x the final) |
+| `<photo>_2_final_vN_<model>_<final>.png` | **the result**: original resolution, or 2K |
+| `<photo>_3_final_vN_<model>_<final>_sharpened.png` | the same with a light unsharp mask |
+| `<photo>_4_upscaled_vN_<model>_<big>.png` | the full SeedVR2 output (2x the Qwen output, 3-4x for very large originals; for small originals only a little larger than the 2K final) |
 
 - `variants\` holds the candidates at the original size, the original as `variant_0_original_*`,
   `contact_sheet.jpg` and `faces.jpg` (close-ups of up to three faces across all variants). Delete
@@ -125,15 +144,17 @@ Every delivered image has exactly the original's proportions.
   the face instead.
 - **It invents detail.** Both models are generative. Text, small patterns and background faces can be
   plausible rather than true. Don't use it where exactness matters.
-- **Don't push the size.** 2x (up to 4x for small originals) is the sweet spot. Going much further (to
+- **Don't push the size.** 2x is the sweet spot. Going much further (to
   "16K", for example) only magnifies the source's noise; the information isn't there.
 - **Colours in colorize mode are guesses.** They're natural and era-appropriate, but the model can't
   know the real colour of a coat. Generate variants and pick.
 
 ## Privacy
 
-Everything runs locally. Your photos are read from wherever you point the tool and written only under
-`output\`. local-image also keeps a copy of each photo it edits in its own `ComfyUI\input\` folder.
+Everything runs locally. Your photos are read from wherever you point the tool; results are written
+under `output\`, and `crop` writes its straightened copy into `input\`. local-image keeps its own
+copies too: each photo it edits in its `ComfyUI\input\` folder, and every generated variant (with the
+prompt and workflow embedded) in its `ComfyUI\output\` folder. Clear those if that matters to you.
 `input\`, `output\`, every image and video file type, the weights and the environments are all
 git-ignored. `scripts\check_repo_safe.py` (run before any push) refuses to publish images, weights,
 local paths, emails or credentials.
@@ -142,7 +163,8 @@ local paths, emails or credentials.
 
 - **This repo's code:** MIT ([LICENSE](LICENSE)).
 - **Qwen-Image-2.1** (used through local-image): **Qwen Research License, for research and evaluation
-  only.** Personal testing is fine. Commercial use of the results needs a licence from Qwen.
+  only.** Restoring your own photos for yourself is unlikely to bother anyone, but it is not clearly
+  inside that grant; commercial use of the results needs a licence from Qwen.
 - **SeedVR2** code and weights: Apache-2.0. **YuNet** face detector: MIT.
 
 See [LICENSE-MODELS.md](LICENSE-MODELS.md).

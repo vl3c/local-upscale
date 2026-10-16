@@ -10,7 +10,7 @@ from .images import label, resize
 Box = tuple[int, int, int, int]  # x, y, w, h
 
 
-def detect(img, max_faces: int = 6, threshold: float = 0.6) -> list[Box]:
+def detect(img, max_faces: int = 12, threshold: float = 0.6) -> list[Box]:
     """Faces in `img`, most confident first, overlaps removed, returned left to right.
     Empty if the detector model is not installed or nothing is found."""
     if not config.FACE_MODEL.exists() or not hasattr(cv2, "FaceDetectorYN"):
@@ -32,11 +32,11 @@ def detect(img, max_faces: int = 6, threshold: float = 0.6) -> list[Box]:
     return sorted(picked)
 
 
-def head_box(face: Box, W: int, H: int, scale: float = 2.0) -> tuple[int, int, int]:
-    """A square (x0, y0, side) around a face with room for hair, clipped to the image."""
+def head_box(face: Box, W: int, H: int, scale: float = 2.4) -> tuple[int, int, int]:
+    """A square (x0, y0, side) around a face with room above for hair, clipped to the image."""
     x, y, w, h = face
     side = min(int(max(w, h) * scale), W, H)
-    cx, cy = x + w // 2, y + h // 2 - int(h * 0.08)
+    cx, cy = x + w // 2, y + h // 2 - int(h * 0.15)
     x0 = int(np.clip(cx - side // 2, 0, W - side))
     y0 = int(np.clip(cy - side // 2, 0, H - side))
     return x0, y0, side
@@ -52,14 +52,17 @@ def color_match(src, ref) -> np.ndarray:
 
 
 def head_mask(face: Box, x0: int, y0: int, side: int) -> np.ndarray:
-    """Feathered mask of the head (face and hair) inside the square box; zero below the chin, so
-    collars and clothes always stay from the base image."""
+    """Feathered mask of the head (face and hair) inside the square box: zero below the chin, so
+    collars and clothes always stay from the base image, and zero along every edge of the box, so
+    the pasted head never ends in a hard line."""
     x, y, w, h = face
     m = np.zeros((side, side), np.float32)
     cv2.ellipse(m, (int(x - x0 + w / 2), int(y - y0 + h * 0.38)), (int(w * 0.95), int(h * 1.05)), 0, 0, 360, 1, -1)
     m[max(0, int(y - y0 + h * 1.02)):, :] = 0
-    k = max(3, int(side * 0.07) | 1)
-    return cv2.GaussianBlur(m, (k, k), side * 0.035)
+    mg = max(2, int(side * 0.06))
+    m[:mg], m[-mg:], m[:, :mg], m[:, -mg:] = 0, 0, 0, 0
+    # The blur radius (mg - 1) is smaller than the zeroed margin, so the box edges stay exactly 0.
+    return cv2.GaussianBlur(m, (2 * mg - 1, 2 * mg - 1), mg / 3)
 
 
 def mix_heads(base, donors: dict[int, np.ndarray], faces: list[Box]) -> tuple[np.ndarray, list[str]]:
@@ -74,7 +77,8 @@ def mix_heads(base, donors: dict[int, np.ndarray], faces: list[Box]) -> tuple[np
         x0, y0, side = head_box(face, W, H)
         gray = lambda im: cv2.GaussianBlur(cv2.cvtColor(im[y0:y0 + side, x0:x0 + side], cv2.COLOR_BGR2GRAY)
                                            .astype(np.float32), (0, 0), 2)
-        (dx, dy), resp = cv2.phaseCorrelate(gray(base), gray(donor))
+        window = cv2.createHanningWindow((side, side), cv2.CV_32F)  # unwindowed, shifts read ~2x too small
+        (dx, dy), resp = cv2.phaseCorrelate(gray(base), gray(donor), window)
         if resp < 0.05 or max(abs(dx), abs(dy)) > 8:  # no reliable match: don't move the head
             dx = dy = 0.0
         donor = cv2.warpAffine(donor, np.float32([[1, 0, -dx], [0, 1, -dy]]), (W, H), borderMode=cv2.BORDER_REFLECT)
@@ -86,18 +90,26 @@ def mix_heads(base, donors: dict[int, np.ndarray], faces: list[Box]) -> tuple[np
     return np.clip(out, 0, 255).astype(np.uint8), notes
 
 
+def square_crop(img, cx: int, cy: int, half: int) -> np.ndarray:
+    """A 2*half square centred on (cx, cy); parts outside the image are black, never stretched."""
+    pad = cv2.copyMakeBorder(img, half, half, half, half, cv2.BORDER_CONSTANT, value=0)
+    return pad[cy:cy + 2 * half, cx:cx + 2 * half]
+
+
 def strip(images, labels, faces: list[Box] | None = None, max_rows: int = 3, side: int = 420):
-    """One row per face (up to max_rows), each showing the same face crop in every image.
-    Faces are detected in the first image unless given. None when there are no faces."""
-    faces = faces if faces is not None else detect(images[0], max_faces=max_rows)
+    """One row per face, each showing the same square face crop in every image. Without `faces`,
+    the largest `max_rows` faces of the first image are used, shown left to right.
+    None when there are no faces."""
+    if faces is None:
+        found = detect(images[0])
+        faces = sorted(sorted(found, key=lambda f: -f[2] * f[3])[:max_rows])
     if not faces:
         return None
-    H, W = images[0].shape[:2]
     rows = []
     for x, y, w, h in faces[:max_rows]:
-        cx, cy, half = x + w // 2, y + h // 2, int(max(w, h) * 0.9)
-        x0, y0, x1, y1 = max(cx - half, 0), max(cy - half, 0), min(cx + half, W), min(cy + half, H)
-        rows.append(np.hstack([label(resize(im[y0:y1, x0:x1], side, side), t) for im, t in zip(images, labels)]))
+        cx, cy, half = x + w // 2, y + h // 2, max(8, int(max(w, h) * 0.9))
+        rows.append(np.hstack([label(resize(square_crop(im, cx, cy, half), side, side), t)
+                               for im, t in zip(images, labels)]))
     return np.vstack(rows)
 
 

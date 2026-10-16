@@ -5,8 +5,8 @@
 
 .DESCRIPTION
     Clones the SeedVR2 standalone CLI at a pinned commit into engine\SeedVR2, builds .venv\ with a
-    CUDA build of PyTorch, and fetches the SeedVR2-7B weights and the face detector with checksum
-    verification into models\. Nothing here uploads anything; your photos never leave the machine.
+    CUDA build of PyTorch, and fetches the chosen SeedVR2 upscaler weights (7B by default) and the
+    face detector with checksum verification into models\. Nothing here uploads anything; your photos never leave the machine.
 
     local-image (the Qwen-Image edit tool) is a separate install: see README.md. This script only
     checks that it can be found.
@@ -20,9 +20,15 @@
 .PARAMETER CudaIndex
     PyTorch wheel index. cu130 is what this repo was tested with; cu128 also supports RTX 50-series.
 
+.PARAMETER Upscaler
+    Which SeedVR2 upscaler(s) to download: 7b (default, most faithful, 7.9 GB), 7b-sharp (crisper,
+    7.9 GB), 3b (faster, smaller, 3.2 GB, invents more). Several can be given (-Upscaler 7b,3b);
+    the first becomes the default for `finish` (switch per run with finish --model).
+
 .PARAMETER ReuseModels
     One or more folders that already hold some of the weights (another SeedVR2 install, for example).
     Matching files are hard-linked (or copied, across drives) instead of downloaded, then verified.
+    Folders are separated by commas, so a folder whose path contains a comma can't be used.
 
 .PARAMETER SkipModels
     Build the environment only; fetch the weights later with scripts\download_models.py.
@@ -31,15 +37,19 @@
     Don't link this folder into ~\.claude\skills\local-upscale (the Claude Code skill).
 
 .EXAMPLE
-    .\install.ps1
+    powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 .EXAMPLE
-    .\install.ps1 -ReuseModels D:\old\seedvr2\models
+    powershell -ExecutionPolicy Bypass -File .\install.ps1 -Upscaler 7b,3b
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\install.ps1 -ReuseModels D:\old\seedvr2\models
 #>
 [CmdletBinding()]
 param(
     [string]   $PythonVersion = '3.13',
     [string]   $CudaIndex     = 'cu130',
+    [string[]] $Upscaler      = @(),
     [string[]] $ReuseModels   = @(),
     [switch]   $SkipModels,
     [switch]   $NoSkillLink
@@ -89,7 +99,7 @@ $drive = Get-PSDrive -Name ($RepoRoot.Substring(0, 1)) -ErrorAction SilentlyCont
 if ($drive) {
     $freeGB = [math]::Round($drive.Free / 1GB, 1)
     Ok "$freeGB GB free"
-    if ($freeGB -lt 20) { Warn 'Under 20 GB free. Weights are ~9 GB, the venv ~6 GB.' }
+    if ($freeGB -lt 20) { Warn 'Under 20 GB free. Weights are 4-9 GB per upscaler, the venv ~6 GB, pip cache ~3 GB.' }
 }
 $li = if ($env:LOCAL_IMAGE_DIR) { $env:LOCAL_IMAGE_DIR } else { Join-Path $HOME '.claude\skills\local-image' }
 if (Test-Path (Join-Path $li 'scripts\generate.py')) { Ok "local-image found at $li" }
@@ -129,11 +139,13 @@ if (-not (Test-Path $py)) {
 }
 $env:PIP_CACHE_DIR = Join-Path $RepoRoot '.cache\pip'
 & $py -m pip install --quiet --upgrade pip
-$have = Probe $py @('-c', 'import torch;print(torch.__version__)')
-if ($have.Code -eq 0 -and $have.Out -like "$TORCH_VERSION*") { Ok "torch $($have.Out) already installed" }
+# torch AND torchvision (the engine imports both), and the CUDA build asked for (not a +cpu wheel).
+$have = Probe $py @('-c', 'import torch, torchvision; print(torch.__version__)')
+$haveVer = (($have.Out -split "`r?`n") | Select-Object -Last 1).Trim()
+if ($have.Code -eq 0 -and $haveVer -eq "$TORCH_VERSION+$CudaIndex") { Ok "torch $haveVer already installed" }
 else {
     Note "Installing torch $TORCH_VERSION from the $CudaIndex index (~3 GB download unless cached)..."
-    & $py -m pip install --quiet --index-url "https://download.pytorch.org/whl/$CudaIndex" "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION"
+    & $py -m pip install --quiet --force-reinstall --index-url "https://download.pytorch.org/whl/$CudaIndex" "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION"
     if ($LASTEXITCODE -ne 0) { Fail 'torch install failed' }
 }
 & $py -m pip install --quiet -r (Join-Path $RepoRoot 'requirements.txt')
@@ -144,9 +156,15 @@ if ($cuda.Out -like 'True*') { Ok "CUDA OK: $($cuda.Out -replace '^True ')" } el
 # --- weights ----------------------------------------------------------------
 if ($SkipModels) { Step 'Weights: skipped (-SkipModels)' }
 else {
-    Step 'Weights (models\): SeedVR2-7B mixed FP8 + VAE (~9 GB), face detector'
+    Step 'Weights (models\): SeedVR2 upscaler(s), its VAE, face detector'
     $dl = @((Join-Path $RepoRoot 'scripts\download_models.py'))
-    if ($ReuseModels.Count) { $dl += '--reuse'; $dl += $ReuseModels }
+    # Accept "7b,3b", "7B, 3b" or separate values; names are lower-case in models.json.
+    $ups = @($Upscaler | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+    $known = @($manifest.upscalers.PSObject.Properties.Name)
+    foreach ($u in $ups) { if ($known -notcontains $u) { Fail "Unknown upscaler '$u'. Choose from: $($known -join ', ')" } }
+    if ($ups.Count) { $dl += '--upscaler'; $dl += $ups }
+    $reuse = @($ReuseModels | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($reuse.Count) { $dl += '--reuse'; $dl += $reuse }
     & $py @dl
     if ($LASTEXITCODE -ne 0) { Fail 'weight download failed (re-run to resume)' }
 }
@@ -157,8 +175,14 @@ if (-not $NoSkillLink) {
     $skills = Join-Path $HOME '.claude\skills'
     $link = Join-Path $skills 'local-upscale'
     New-Item -ItemType Directory -Path $skills -Force | Out-Null
-    if (Test-Path $link) {
-        $item = Get-Item $link -Force
+    # Get-Item -Force sees a junction even when its target is gone (Test-Path does not).
+    $item = Get-Item $link -Force -ErrorAction SilentlyContinue
+    if ($item -and $item.LinkType -and -not (Test-Path $link)) {
+        Note "Removing a stale link (its target no longer exists)"
+        $item.Delete()
+        $item = $null
+    }
+    if ($item) {
         if ($item.LinkType -and ($item.Target -contains $RepoRoot -or "$($item.Target)" -eq $RepoRoot)) { Ok 'Already linked' }
         else { Warn "$link already exists and points elsewhere; left alone." }
     } else {

@@ -81,16 +81,19 @@ def final_size(w: int, h: int) -> tuple[int, int]:
 
 
 def sr_factor(target: tuple[int, int], source: tuple[int, int]) -> int:
-    """Integer SeedVR2 factor so its output covers the target: at least 2x (supersampling), at most 4x."""
+    """Integer SeedVR2 factor so its output covers the target: at least 2x (supersampling), at most 4x.
+    In practice 2x unless the original is very large (over ~4700 px wide); beyond 4x the rest is a
+    plain resize."""
     return min(4, max(2, math.ceil(max(target[0] / source[0], target[1] / source[1]))))
 
 
-def tile_positions(size: int, tile: int, step: int) -> list[int]:
-    """Start offsets of overlapping tiles covering [0, size); the last tile is flush with the end."""
-    pos = list(range(0, max(size - tile, 0) + 1, step))
-    if pos[-1] + tile < size:
-        pos.append(size - tile)
-    return pos
+def tile_positions(size: int, tile: int, min_overlap: int) -> list[int]:
+    """Start offsets of equally spaced tiles covering [0, size), first flush with 0 and last flush
+    with the end, every neighbouring pair overlapping by at least min_overlap."""
+    if size <= tile:
+        return [0]
+    n = math.ceil((size - min_overlap) / (tile - min_overlap))
+    return [round(i * (size - tile) / (n - 1)) for i in range(n)]
 
 
 def ramp(n: int, overlap: int) -> np.ndarray:

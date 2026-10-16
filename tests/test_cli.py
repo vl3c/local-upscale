@@ -18,6 +18,9 @@ def test_parser_commands():
     assert cli.parse_picks(a.face) == {1: 2, 2: 4}
     a = p.parse_args(["crop", "x.jpg", "--corners", "1,2,3,4,5,6,7,8", "--inset", "0.01"])
     assert a.corners == [1, 2, 3, 4, 5, 6, 7, 8] and a.inset == 0.01
+    assert cli.parse_picks(["1:3"]) == {1: 3}
+    with pytest.raises(SystemExit):
+        cli.parse_picks(["1-3"])
 
 
 def test_bad_corners_rejected():

@@ -33,7 +33,8 @@ def find_print(img, band: float = 0.10, min_span: float = 0.5):
 
     A photographed print has a long, straight edge along each side where it meets the surface
     under it. For each side, the longest near-straight edge (Canny + probabilistic Hough) inside
-    the outer `band` of the picture, spanning at least `min_span` of that side, is taken as the
+    the outer `band` of the picture, whose collinear pieces add up to at least half of `min_span`
+    of that side, is taken as the
     print's edge; a side with no such edge is assumed to run along the picture's own border (the
     print fills the shot there). None if no side has an edge."""
     H, W = img.shape[:2]

@@ -43,3 +43,18 @@ def test_numbered_draws_on_a_copy():
     im = np.zeros((300, 300, 3), np.uint8)
     out = faces.numbered(im, [(50, 50, 80, 80)])
     assert im.sum() == 0 and out.sum() > 0
+
+
+def test_head_mask_is_zero_on_every_box_edge():
+    for face in [(100, 100, 80, 110), (40, 20, 120, 100), (0, 0, 60, 60)]:
+        x0, y0, side = faces.head_box(face, 600, 600)
+        m = faces.head_mask(face, x0, y0, side)
+        assert max(m[0].max(), m[-1].max(), m[:, 0].max(), m[:, -1].max()) == 0
+        x, y, w, h = face
+        assert m[y - y0 + h // 2, x - x0 + w // 2] > 0.99  # the face centre is fully replaced
+
+
+def test_square_crop_pads_instead_of_stretching():
+    im = np.full((100, 100, 3), 200, np.uint8)
+    c = faces.square_crop(im, 5, 50, 30)
+    assert c.shape == (60, 60, 3) and c[30, 0].sum() == 0 and c[30, 59].sum() == 600
