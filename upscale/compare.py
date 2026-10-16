@@ -80,6 +80,20 @@ def label(p: Path, prefix: str = "") -> str:
     return s[:1].upper() + s[1:]
 
 
+def unique(labels: list[str]) -> list[str]:
+    """Number repeats ("Curls", "Curls 2", "Curls 3") without ever reusing a label, including one
+    another file already has by its own name."""
+    taken, base, out = set(), set(labels), []
+    for t in labels:
+        c, n = t, 1
+        while c in taken or (c != t and c in base):
+            n += 1
+            c = f"{t} {n}"
+        taken.add(c)
+        out.append(c)
+    return out
+
+
 def _src(p: Path, d: Path) -> str:
     try:
         rel = p.resolve().relative_to(d.resolve())
@@ -106,10 +120,7 @@ def write(d: Path, title: str | None = None, prefix: str | None = None) -> Path 
     if not items:
         return None
     prefix = d.name if prefix is None else prefix
-    labels = [label(p, prefix) for p in items]
-    for i, t in enumerate(labels):  # never the size: it is the same on every button
-        if t in labels[:i]:
-            labels[i] = f"{t} {labels[:i].count(t) + 1}"
+    labels = unique([label(p, prefix) for p in items])  # never the size: it is the same on every button
     data = [{"src": _src(_viewable(p, d), d), "label": t, "file": p.name, "original": is_original(p),
              "key": KEYS[i] if i < len(KEYS) else ""} for i, (p, t) in enumerate(zip(items, labels))]
     fill = {"TITLE": html.escape(title or d.name), "DATA": json.dumps(data).replace("<", "\\u003c")}

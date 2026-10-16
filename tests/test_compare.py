@@ -54,6 +54,7 @@ def test_ad_hoc_folder_borrows_the_parents_original(tmp_path):
     img(d / "younger_05y_a_80x60.png", 3)                          # same name but the size: numbered
     labels = [i["label"] for i in page_items(compare.write(d))]
     assert labels == ["Original", "05y a", "05y a 2", "05y b"] and not any("x" in t for t in labels)
+    assert compare.unique(["X", "X", "X", "X 2"]) == ["X", "X 3", "X 4", "X 2"]
     assert items[0]["src"] == "../photo_0_original_40x30.jpg"
 
 
