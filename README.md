@@ -90,8 +90,9 @@ gets its own folder in `output\`.
 # 1. Four cleaned-up variants to choose from (~3-8 min)
 .venv\Scripts\python.exe scripts\upscale.py variants input\photo.jpg
 
-# 2. Look at output\photo\variants\ (flip through variant_0_original, variant_1, ...;
-#    contact_sheet.jpg and faces.jpg show them side by side), then finish your pick (~1-2 min)
+# 2. Open output\photo\compare.html and flip between the original and the variants with the keys
+#    1, 2, 3... (contact_sheet.jpg and faces.jpg in variants\ show them side by side), then finish
+#    your pick (~1-2 min)
 .venv\Scripts\python.exe scripts\upscale.py finish input\photo.jpg --variant 3
 ```
 
@@ -127,6 +128,10 @@ upscale.py variants input\scan_cropped.jpg --colorize
 
 # Keep the full upscale resolution as the final instead of downscaling.
 upscale.py finish input\photo.jpg --variant 3 --full
+
+# (Re)write compare.html for a photo, or for any folder of images (e.g. one you made by hand).
+upscale.py compare input\photo.jpg
+upscale.py compare output\photo\my_edits
 ```
 
 ### What you get (`output\<photo>\`)
@@ -142,6 +147,13 @@ flipped through in any image viewer:
 | `<photo>_3_final_vN_<model>_<final>_sharpened.png` | the same with a light unsharp mask |
 | `<photo>_4_upscaled_vN_<model>_<big>.png` | the full SeedVR2 output (2x the Qwen output, 3-4x for very large originals; for small originals only a little larger than the 2K final) |
 
+- `compare.html` is a page to open from disk (it loads nothing from the internet). It shows the
+  original, every variant and every final at the same size and in the same place, so anything that
+  moves when you switch is a real difference. Keys `1`, `2`, `3`... (or the buttons) switch, `←`/`→`
+  step through them, holding the photo shows the original, `Space` switches to it and back (or
+  shows it while held), and `Z` or a double-click toggles full size (drag to pan). It is rewritten
+  after every `variants`, `mix` and `finish`, so every time you work with variants there is a page
+  to compare them; for a set of your own, run `upscale.py compare` on its folder.
 - `variants\` holds the candidates at the original size, the original as `variant_0_original_*`,
   `contact_sheet.jpg` and `faces.jpg` (close-ups of up to three faces across all variants). Delete
   the ones you don't want; the overviews only show what's left.
@@ -188,7 +200,7 @@ See [LICENSE-MODELS.md](LICENSE-MODELS.md).
 ## Repo layout
 
 ```
-upscale/            the package: workflow, Qwen (local-image) wrapper, SeedVR2 tiling, faces, crop
+upscale/            the package: workflow, Qwen (local-image) wrapper, SeedVR2 tiling, faces, crop, compare.html
 scripts/upscale.py  the command line (variants and finish run in their own window: upscale/window.py)
 scripts/logtee.py   runs a job in its window: logs everything, shows what matters (from local-image)
 stop.cmd            stop a running job and free the GPU

@@ -10,6 +10,12 @@ The models are generative: they redraw detail, and **faces are what users judge 
 difference in a familiar face reads as "that's not them". You cannot judge resemblance; the user
 can. Show faces side by side, describe the differences honestly, and let them choose.
 
+**Every time you work with variants, the user gets a comparison page:** `compare.html` in the
+folder that holds them, opened from disk, flipping between the original and each variant at the
+same size and place with the keys 1, 2, 3... `variants`, `mix` and `finish` write it for you; for any
+other set, run `compare` (step 5). Always give the user its local path, never an online page with
+their photos.
+
 All paths below are relative to this skill's folder (the repo). Run commands from it:
 
 ```bash
@@ -22,7 +28,7 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
 close this window to stop it") and run there; your command waits, echoes the window's lines (Qwen
 edits, variants, SeedVR2 phases and tiles) and returns the job's exit code. Tell the user the window
 is theirs: **closing it stops the job and frees the GPU** (for `variants` it also stops local-image's
-server). To stop a job yourself, run `cmd //c stop.cmd` (or `$PY scripts/upscale.py stop`); don't kill
+server). To stop a job yourself, run `$PY scripts/upscale.py stop` (what stop.cmd runs); don't kill
 processes by hand. Only one of these jobs runs at a time: if one refuses with "already running",
 wait for it or ask the user before stopping it. A failed job's window stays up a minute to show the
 error; the full log is in `logs/`.
@@ -41,9 +47,11 @@ error; the full log is in `logs/`.
    ```
    Run it in the background and tell the user it's running in its window. Then **Read**
    `output/<photo>/variants/contact_sheet.jpg` and `faces.jpg` yourself, and tell the user what
-   differs between the variants: face shape, expression, colour, sharpness, any invented text. Point
-   them at `output/<photo>/variants/`, where variant_0_original and the variants flip in order at the
-   same size. Let them pick.
+   differs between the variants: face shape, expression, colour, sharpness, any invented text. Give
+   them the local path of `output/<photo>/compare.html` (written by every `variants`, `mix` and
+   `finish`): opened from disk, it shows the original and every variant at the same size and place,
+   switched with the keys 1, 2, 3... (Space or holding the photo shows the original, Z full size).
+   Let them pick.
 4. **Finish** the pick (~1-2 min):
    ```bash
    $PY scripts/upscale.py finish "input/photo.jpg" --variant 3          # final = original size, or 2K
@@ -52,7 +60,12 @@ error; the full log is in `logs/`.
    ```
    Read a face crop of the final against the original before reporting. Deliver the paths:
    `<photo>_2_final_vN_<model>_*.png` is the result, `_3_..._sharpened` a crisper copy, and `_4_upscaled_*`
-   the full SeedVR2 output.
+   the full SeedVR2 output. `compare.html` now lists the finals too.
+5. **Any other set of images** you make for a photo (an extra edit in a folder of its own, say):
+   `$PY scripts/upscale.py compare "output/photo/that_folder"` writes a `compare.html` there; a folder
+   without an original of its own borrows the photo's from the folder above. Run it after every
+   change to that set, and give the user its path. (local-image's `generate.py --out` also writes
+   one into its folder, with the edited image first.)
 
 ## When faces aren't right
 

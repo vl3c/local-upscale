@@ -6,6 +6,7 @@
     python scripts/upscale.py mix      input/photo.jpg --base 3 [--face 1=2 2=4]
     python scripts/upscale.py finish   input/photo.jpg --variant 2 [--full] [--no-sharpened] [--model 7b|7b-sharp|3b]
     python scripts/upscale.py stop
+    python scripts/upscale.py compare  input/photo.jpg | output/photo/some_folder
 
 variants and finish use the GPU, so they run in their own visible window (see upscale/window.py):
 this command waits for the job and echoes its log. Close that window, or run `stop` (stop.cmd),
@@ -82,7 +83,24 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--no-sharpened", action="store_true", help="skip the lightly sharpened copy")
     f.add_argument("--model", choices=config.upscaler_names(),
                    help="upscaler (default: the one chosen at install, else 7b)")
+    k = add("compare", help="(re)write compare.html: flip between the images with keys 1, 2, 3...")
+    k.add_argument("target", type=Path, help="a photo (its output folder) or any folder of images")
     return ap
+
+
+def compare_page(target: Path) -> int:
+    from upscale import compare
+    target = target.resolve()
+    d = target if target.is_dir() else config.OUTPUT / target.stem
+    if not d.is_dir():
+        print(f"error: no folder {d}; run `variants` first, or pass a folder of images", file=sys.stderr)
+        return 1
+    out = compare.write(d, prefix=None if target.is_dir() else target.stem)
+    if not out:
+        print(f"error: no images in {d}", file=sys.stderr)
+        return 1
+    print(out)
+    return 0
 
 
 def status() -> int:
@@ -135,6 +153,8 @@ def main(argv=None) -> int:
         return status()
     if a.cmd == "stop":
         return stop()
+    if a.cmd == "compare":
+        return compare_page(a.target)
     from upscale import window
     if a.cmd in window.WINDOWED:
         if not a.in_window and os.name == "nt":
