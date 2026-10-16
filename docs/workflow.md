@@ -90,9 +90,13 @@ window title and a one-minute hold after a failure), and then echoes the job's l
   own window, so `variants` also registers a console close handler that starts local-image's
   stop.cmd outside the closing console (Windows allows a handler about 5 seconds). The close
   kills local-image's client at the same moment, so the job's own cleanup gives the handler half
-  a second to show up, and withdraws it only after its own stop (tested by closing a pseudoconsole, which is what a
-  Windows Terminal tab is). If the command that started the job is still waiting, it stops the
-  server too once it sees the window gone.
+  a second to show up, and withdraws it only after its own stop (tested by closing a
+  pseudoconsole, which is what a Windows Terminal tab is). If the command that started the job
+  is still waiting, it stops the server too once it sees the window gone.
+- **Started apart:** the window is opened by a short-lived Python, outside the starting
+  command's process tree and job object (as local-image's start.cmd does with `start`), so
+  killing that command, as an agent ending a background task does, leaves the job on screen
+  for the user rather than ending it unseen.
 - **`stop.cmd`** (`upscale.py stop`) finds this install's job windows by their command line
   (junctions resolved), writes `<log>.stop` so the window closes at once instead of holding,
   kills the job's process tree, and stops local-image's server if the job was `variants`.

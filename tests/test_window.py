@@ -230,3 +230,46 @@ def test_stop_kills_the_job_not_the_window_and_stops_local_image(monkeypatch, tm
     assert log.read_text(encoding="utf-8").strip().endswith(window.STOPPED)
     monkeypatch.setattr(window, "jobs", lambda: [])
     assert window.stop(out=out.append) is None and window.stop(only=10, out=out.append) is None
+
+
+def test_start_opens_the_window_through_a_short_lived_python(monkeypatch):
+    calls = []
+
+    class FakeProcess:
+        def __init__(self, pid):
+            self.pid, self.alive = pid, True
+
+        def is_running(self):
+            return self.alive
+
+    class FakePsutil:
+        NoSuchProcess = ProcessLookupError
+        Process = FakeProcess
+
+        @staticmethod
+        def pid_exists(pid):
+            return False
+
+    monkeypatch.setitem(sys.modules, "psutil", FakePsutil)
+
+    def fake_run(cmd, **k):
+        calls.append((cmd, k))
+        return subprocess.CompletedProcess(cmd, 0, stdout="4242\n", stderr="")
+
+    monkeypatch.setattr(window.subprocess, "run", fake_run)
+    w = window.start(["python.exe", "logtee.py", "--", "job"])
+    (cmd, k), = calls
+    assert cmd[1:3] == ["-c", window.START] and cmd[3:] == ["python.exe", "logtee.py", "--", "job"]
+    assert k["creationflags"] & subprocess.CREATE_NO_WINDOW and k["capture_output"]
+    assert w.pid == 4242 and w.poll() is None
+    w._p.alive = False
+    assert w.poll() == 1
+
+    monkeypatch.setattr(window.subprocess, "run",
+                        lambda cmd, **k: subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom"))
+    try:
+        window.start(["x"])
+    except OSError as e:
+        assert "boom" in str(e)
+    else:
+        raise AssertionError("no error")

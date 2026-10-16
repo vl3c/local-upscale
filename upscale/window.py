@@ -3,8 +3,9 @@
 `variants` and `finish` hold the GPU for minutes, so upscale.py doesn't run them out of sight: it
 opens a new console window titled "local-upscale <command> <photo> - close this window to stop it"
 and runs the job there through scripts/logtee.py. The window shows the job's progress and any
-errors; everything goes to logs/<time>_<pid>_<command>_<photo>.log. The command you ran waits, echoes the
-log as it grows, and exits with the job's exit code, so scripts and agents see what they always did.
+errors; everything goes to logs/<time>_<pid>_<command>_<photo>.log. The command you ran waits,
+echoes the log as it grows, and exits with the job's exit code, so scripts and agents see what
+they always did.
 
 Stopping it:
 - close the window: Windows ends every process attached to it (the job, the SeedVR2 engine,
@@ -83,11 +84,12 @@ def run(argv: list[str], cmd: str, photo: Path, out=print) -> int:
             _wait_started(proc, log)  # until jobs() can see it
         code = follow(proc, log, out)
     except KeyboardInterrupt:
+        proc = proc or _window_for(log)  # Ctrl+C after the window opened but before its pid came back
         if not proc:
             out("Ctrl+C: nothing was started.")
             return 130
         out("Ctrl+C: stopping the job.")
-        if stop(only=proc.pid, out=out) is None:  # not found: kill the window outright
+        if stop(only=proc.pid, out=out) is None and proc.poll() is None:  # not seen as a job yet
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
             _closed(full, out)
         return 130
@@ -125,9 +127,10 @@ class Window:
 
     def poll(self):
         try:
-            return None if self._p and self._p.is_running() and self._p.status() != "zombie" else 1
-        except Exception:
-            return 1
+            return None if self._p and self._p.is_running() else 1  # is_running also catches pid reuse
+        except Exception:  # AccessDenied and the like: don't call a live job gone
+            import psutil
+            return None if psutil.pid_exists(self.pid) else 1
 
 
 def start(full: list[str]):
@@ -141,11 +144,26 @@ def start(full: list[str]):
         import psutil  # noqa: F401  (Window needs it)
     except ImportError:
         return subprocess.Popen(full, creationflags=subprocess.CREATE_NEW_CONSOLE)
-    r = subprocess.run([sys.executable, "-c", START, *full], capture_output=True, text=True)
+    # CREATE_NO_WINDOW: its own hidden console, so a Ctrl+C here can't interrupt it halfway.
+    r = subprocess.run([sys.executable, "-c", START, *full], capture_output=True, encoding="utf-8",
+                       errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
     pid = r.stdout.strip()
     if r.returncode != 0 or not pid.isdigit():
         raise OSError(f"could not open the job window: {r.stderr.strip()[-500:]}")
     return Window(int(pid))
+
+
+def _window_for(log: Path):
+    """The window writing `log`, if one is up (its log name is unique to the command that made it)."""
+    try:
+        import psutil
+    except ImportError:
+        return None
+    procs = [p.info for p in psutil.process_iter(["pid", "ppid", "cmdline"])]
+    mine = {p["pid"]: p for p in procs if p.get("cmdline") and is_window(p["cmdline"])
+            and describe(p["cmdline"])["log"] == str(log)}
+    top = [pid for pid, p in mine.items() if p.get("ppid") not in mine]
+    return Window(top[0]) if top else None
 
 
 def _closed(full: list[str], out) -> None:
