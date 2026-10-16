@@ -10,6 +10,12 @@ The models are generative: they redraw detail, and **faces are what users judge 
 difference in a familiar face reads as "that's not them". You cannot judge resemblance; the user
 can. Show faces side by side, describe the differences honestly, and let them choose.
 
+**Every time you work with variants, the user gets a comparison page:** `compare.html` in the
+folder that holds them, opened from disk, flipping between the original and each variant at the
+same size and place with the keys 1, 2, 3... `variants`, `mix` and `finish` write it for you; for any
+other set, run `compare` (step 5). Always give the user its local path, never an online page with
+their photos.
+
 All paths below are relative to this skill's folder (the repo). Run commands from it:
 
 ```bash
@@ -48,8 +54,9 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
    the full SeedVR2 output. `compare.html` now lists the finals too.
 5. **Any other set of images** you make for a photo (an extra edit in a folder of its own, say):
    `$PY scripts/upscale.py compare "output/photo/that_folder"` writes a `compare.html` there; a folder
-   without an original of its own borrows the photo's from the folder above. Give the user its path,
-   never an online page with their photos.
+   without an original of its own borrows the photo's from the folder above. Run it after every
+   change to that set, and give the user its path. (local-image's `generate.py --out` also writes
+   one into its folder, with the edited image first.)
 
 ## When faces aren't right
 

@@ -135,8 +135,10 @@ flipped through in any image viewer:
 - `compare.html` is a page to open from disk (it loads nothing from the internet). It shows the
   original, every variant and every final at the same size and in the same place, so anything that
   moves when you switch is a real difference. Keys `1`, `2`, `3`... (or the buttons) switch, `←`/`→`
-  step through them, holding the photo shows the original, `Space` switches to it and back (or shows it while held), and `Z` or a double-click
-  toggles full size (drag to pan). It is rewritten after every `variants`, `mix` and `finish`.
+  step through them, holding the photo shows the original, `Space` switches to it and back (or
+  shows it while held), and `Z` or a double-click toggles full size (drag to pan). It is rewritten
+  after every `variants`, `mix` and `finish`, so every time you work with variants there is a page
+  to compare them; for a set of your own, run `upscale.py compare` on its folder.
 - `variants\` holds the candidates at the original size, the original as `variant_0_original_*`,
   `contact_sheet.jpg` and `faces.jpg` (close-ups of up to three faces across all variants). Delete
   the ones you don't want; the overviews only show what's left.
