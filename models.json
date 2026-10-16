@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "Everything install.ps1 / scripts/download_models.py fetches, pinned by commit and SHA-256.",
+    "Nothing listed here is redistributed by this repo; see LICENSE-MODELS.md for each licence."
+  ],
+  "engine": {
+    "name": "SeedVR2 standalone CLI (numz/ComfyUI-SeedVR2_VideoUpscaler)",
+    "repo": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git",
+    "commit": "4490bd1f482e026674543386bb2a4d176da245b9",
+    "dest": "engine/SeedVR2",
+    "license": "Apache-2.0"
+  },
+  "files": [
+    {
+      "name": "seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+      "url": "https://huggingface.co/AInVFX/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+      "dest": "models/seedvr2",
+      "bytes": 8466296338,
+      "sha256": "3d68b5ec0b295ae28092e355c8cad870edd00b817b26587d0cb8f9dd2df19bb2",
+      "license": "Apache-2.0",
+      "note": "SeedVR2 7B diffusion transformer, FP8 with the last block in FP16 (the plain 7B FP8 file shows artefacts)."
+    },
+    {
+      "name": "ema_vae_fp16.safetensors",
+      "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
+      "dest": "models/seedvr2",
+      "bytes": 501324814,
+      "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1",
+      "license": "Apache-2.0",
+      "note": "SeedVR2 VAE."
+    },
+    {
+      "name": "face_detection_yunet_2023mar.onnx",
+      "url": "https://github.com/opencv/opencv_zoo/raw/f12e12798e8314f7c074a6656816c048dcc95b7a/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "dest": "models/face",
+      "bytes": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "license": "MIT",
+      "note": "OpenCV Zoo YuNet face detector: face close-ups for choosing variants, and face positions for mixing."
+    }
+  ]
+}

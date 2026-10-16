@@ -1,0 +1,48 @@
+# This repo tracks ONLY first-party source: the upscale package, scripts, tests and docs.
+# Your photos, every result, everything install.ps1 creates and every weight it downloads
+# are ignored. After a fresh install and any number of runs, `git status` must stay clean.
+
+# --- your photos, results, settings and logs ------------------------------------
+input/
+output/
+config.local.json
+logs/
+temp/
+*.log
+
+# Any image or video anywhere, so a photo dropped in the wrong folder never gets committed.
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.gif
+*.heic
+*.heif
+*.avif
+*.mkv
+*.mp4
+
+# --- everything install.ps1 creates -------------------------------------------
+engine/
+.venv/
+.venv-*/
+venv/
+models/
+.cache/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.gguf
+*.onnx
+
+# --- python / tooling noise ----------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.claude/

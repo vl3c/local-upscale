@@ -1,0 +1,20 @@
+# The one venv (.venv): the workflow and the SeedVR2 engine. install.ps1 installs torch and
+# torchvision from the CUDA wheel index first (cu130 by default; RTX 50-series needs CUDA 12.8+),
+# then this list. Versions are the ones this repo was tested with.
+
+# SeedVR2 engine (engine/SeedVR2/requirements.txt, pinned)
+safetensors==0.8.0
+numpy==2.5.2
+tqdm==4.70.1
+psutil==7.2.2
+einops==0.8.2
+omegaconf==2.4.0
+diffusers==0.41.0
+peft==0.21.2
+rotary-embedding-torch==0.9.1
+opencv-python==5.0.0.93
+gguf==0.19.0
+matplotlib==3.11.2
+
+# tests
+pytest==9.1.1

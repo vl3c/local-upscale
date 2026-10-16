@@ -1,0 +1,4 @@
+# What the test suite needs, for CI: no GPU, no weights, no engine checkout, no torch.
+numpy==2.5.2
+opencv-python-headless==5.0.0.93
+pytest==9.1.1
