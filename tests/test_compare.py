@@ -37,7 +37,7 @@ def test_photo_folder_order_labels_and_keys(tmp_path):
     assert page == d / "compare.html"
     items = page_items(page)
     assert [i["label"] for i in items] == ["Original", "Variant 1", "Variant 2", "Variant 10",
-                                          "Original 2048x1536", "Final v2 7b", "Final v2 7b sharpened"]
+                                          "Original resized", "Final v2 7b", "Final v2 7b sharpened"]
     assert [i["key"] for i in items] == list("1234567")
     assert [i["original"] for i in items] == [True] + [False] * 6
     assert items[0]["src"] == "family%20photo_0_original_40x30.jpg"
@@ -51,6 +51,9 @@ def test_ad_hoc_folder_borrows_the_parents_original(tmp_path):
     img(d / "younger_05y_a_40x30.png", 1)
     items = page_items(compare.write(d))
     assert [i["label"] for i in items] == ["Original", "05y a", "05y b"]
+    img(d / "younger_05y_a_80x60.png", 3)                          # same name but the size: numbered
+    labels = [i["label"] for i in page_items(compare.write(d))]
+    assert labels == ["Original", "05y a", "05y a 2", "05y b"] and not any("x" in t for t in labels)
     assert items[0]["src"] == "../photo_0_original_40x30.jpg"
 
 
