@@ -66,15 +66,32 @@ def collect(d: Path) -> list[Path]:
 
 def label(p: Path, prefix: str = "") -> str:
     """A short button label from a file name: "variant_3_1448x1878" -> "Variant 3",
-    "<photo>_2_final_v3_7b_2896x3756" -> "Final v3 7b", "<photo>_0_original_..." -> "Original"."""
+    "<photo>_2_final_v3_7b_2896x3756" -> "Final v3 7b", "<photo>_0_original_..." -> "Original".
+    Sizes are left out: every image is shown at the same size, and the tag on the photo has it."""
     s = p.stem
     if is_original(p):
         return "Original"
     if prefix and s.lower().startswith(prefix.lower() + "_"):
         s = s[len(prefix) + 1:]
+    if re.match(r"1_original(_|$)", s):  # the original enlarged to the final size
+        return "Original resized"
     s = re.sub(r"^\d+_(?=\D)", "", s)  # the viewing-order index
     s = _SIZE.sub("", s).replace("_", " ").strip() or p.stem
     return s[:1].upper() + s[1:]
+
+
+def unique(labels: list[str]) -> list[str]:
+    """Number repeats ("Curls", "Curls 2", "Curls 3") without ever reusing a label, including one
+    another file already has by its own name."""
+    taken, base, out = set(), set(labels), []
+    for t in labels:
+        c, n = t, 1
+        while c in taken or (c != t and c in base):
+            n += 1
+            c = f"{t} {n}"
+        taken.add(c)
+        out.append(c)
+    return out
 
 
 def _src(p: Path, d: Path) -> str:
@@ -103,11 +120,7 @@ def write(d: Path, title: str | None = None, prefix: str | None = None) -> Path 
     if not items:
         return None
     prefix = d.name if prefix is None else prefix
-    labels = [label(p, prefix) for p in items]
-    for i, t in enumerate(labels):  # e.g. the original, then the original resized to the final size
-        if t in labels[:i]:
-            size = _SIZE.search(items[i].stem)
-            labels[i] = f"{t} {size.group(0).lstrip('_')}" if size else f"{t} ({items[i].name})"
+    labels = unique([label(p, prefix) for p in items])  # never the size: it is the same on every button
     data = [{"src": _src(_viewable(p, d), d), "label": t, "file": p.name, "original": is_original(p),
              "key": KEYS[i] if i < len(KEYS) else ""} for i, (p, t) in enumerate(zip(items, labels))]
     fill = {"TITLE": html.escape(title or d.name), "DATA": json.dumps(data).replace("<", "\\u003c")}
