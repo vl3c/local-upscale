@@ -88,13 +88,19 @@ window title and a one-minute hold after a failure), and then echoes the job's l
 - **Closing the window** stops the job: Windows ends every process attached to the console, which
   covers the job, the SeedVR2 engine and local-image's client. local-image's server runs in its
   own window, so `variants` also registers a console close handler that starts local-image's
-  stop.cmd outside the closing console (Windows allows a handler about 5 seconds).
+  stop.cmd outside the closing console (Windows allows a handler about 5 seconds). The close
+  kills local-image's client at the same moment, so the job's own cleanup gives the handler half
+  a second to show up before withdrawing it (tested by closing a pseudoconsole, which is what a
+  Windows Terminal tab is). If the command that started the job is still waiting, it stops the
+  server too once it sees the window gone.
 - **`stop.cmd`** (`upscale.py stop`) finds this install's job windows by their command line
   (junctions resolved), writes `<log>.stop` so the window closes at once instead of holding,
   kills the job's process tree, and stops local-image's server if the job was `variants`.
 - **One job at a time:** the GPU can't hold two, so a second `variants` or `finish` refuses to
-  start while another job's window still has a running job. A window held open after a failure
-  doesn't count.
+  start while another job's window still has a running job (checked under a lock in `logs/`, so
+  two starts at once can't both pass). A window held open after a failure doesn't count.
+- **Ctrl+C** in the window ends the job without the one-minute hold; Ctrl+C in the command that
+  started it stops the job through `stop`.
 - SeedVR2's own output still goes to `work/seedvr2_*.log`; its phases and tiles are echoed into
   the window as progress.
 

@@ -1,5 +1,6 @@
 """The workflow end to end, with local-image and SeedVR2 replaced by fakes (no GPU needed)."""
 import json
+import threading
 from pathlib import Path
 
 import cv2
@@ -38,6 +39,9 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(qwen, "edit", fake_edit)
     monkeypatch.setattr(qwen, "stop", fake_stop)
     monkeypatch.setattr(qwen, "gpu_used_mb", lambda: 1000)
+    monkeypatch.setattr(window, "CLOSE_GRACE", 0)
+    monkeypatch.setattr(window, "closing", threading.Event())
+    monkeypatch.setattr(window, "_done", threading.Event())
     monkeypatch.setattr(workflow.faces, "detect", lambda img, **k: [])
     return photo, calls
 
@@ -68,25 +72,37 @@ def test_server_stopped_even_when_an_edit_fails(env, monkeypatch):
     assert calls["stop"] == 1
 
 
-def test_closing_the_window_stops_local_image(env, monkeypatch):
-    """While Qwen runs, closing the job's window must still stop local-image's server (in its
-    own window); the action is withdrawn once variants stops it itself."""
+def test_close_action_is_registered_only_while_qwen_runs(env, monkeypatch):
     photo, calls = env
     edit = qwen.edit
-    pending = []
+    seen = []
 
-    def edit_then_close(*a, **k):
-        pending.extend(window._on_close)
-        for action in window._on_close:  # what the console handler runs on CTRL_CLOSE_EVENT
-            action()
+    def edit_and_look(*a, **k):
+        seen.append(len(window._on_close))
         return edit(*a, **k)
 
-    monkeypatch.setattr(qwen, "edit", edit_then_close)
+    monkeypatch.setattr(qwen, "edit", edit_and_look)
     workflow.variants(photo, seeds=[1, 2], log=quiet)
-    assert pending and calls["stop_detached"] == 2 and calls["stop"] == 1 and not window._on_close
-    calls["stop_detached"] = 0
+    assert seen == [1, 1] and calls["stop"] == 1 and calls["stop_detached"] == 0 and not window._on_close
+    seen.clear()
     workflow.variants(photo, seeds=[1, 2], keep_server=True, log=quiet)
-    assert calls["stop_detached"] == 0 and not window._on_close
+    assert seen == [0, 0] and calls["stop"] == 1 and not window._on_close
+
+
+def test_closing_the_window_stops_local_image(env, monkeypatch):
+    """Closing the window kills local-image's client, so the edit fails and the finally runs while
+    the console handler runs too: the handler's detached stop must happen, and only once."""
+    photo, calls = env
+
+    def closed(*a, **k):
+        threading.Thread(target=window._run_close_actions).start()  # the handler, on its own thread
+        raise qwen.QwenError("local-image edit failed (exit 3221225786)")
+
+    monkeypatch.setattr(window, "CLOSE_GRACE", 2)
+    monkeypatch.setattr(qwen, "edit", closed)
+    with pytest.raises(qwen.QwenError):
+        workflow.variants(photo, seeds=[1, 2], log=quiet)
+    assert calls["stop_detached"] == 1 and calls["stop"] == 0
 
 
 def test_rerun_after_deleting_work_never_overwrites(env):

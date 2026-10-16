@@ -124,3 +124,99 @@ def test_seedvr2_progress_lines():
         "  SeedVR2: Phase 2: DiT upscaling"
     assert seedvr2.progress_line("[20:21:29.811] 🎬 Upscaling batch 2/4") == "  SeedVR2: upscaling tile 2/4"
     assert seedvr2.progress_line("[20:20:32.502] 🎨 Encoding batch 1/4") is None
+
+
+def test_describe_reads_the_title_and_spelled_out_options():
+    j = window.describe(window_cmdline("variants", "--colorize"))
+    assert j["what"] == "variants Crăciun 1987.jpg" and j["stops_local_image"]
+    assert not window.describe(window_cmdline("variants", "--keep-server"))["stops_local_image"]
+    assert not window.describe(window_cmdline("finish", "--variant", "2"))["stops_local_image"]
+
+
+def test_follow_stopped_ctrl_c_and_split_lines(tmp_path):
+    log = tmp_path / "job.log"
+    log.write_text(f"12:00:00 working\n12:00:05 {window.STOPPED}\n=== exited with code 15 at x ===\n",
+                   encoding="utf-8")
+
+    class Running:
+        def poll(self):
+            return None
+
+    assert window.follow(Running(), log, lambda s: None, poll=0) == 1    # stop.cmd: always 1
+
+    log.write_bytes(b"12:00:00 half a li")
+    chunks = [b"ne\n=== exited with code 3221225786 at x ===\n"]
+
+    class Growing:
+        def poll(self):
+            if chunks:
+                with open(log, "ab") as f:
+                    f.write(chunks.pop())
+            return None
+
+    seen = []
+    code = window.follow(Growing(), log, seen.append, poll=0)
+    assert seen == ["12:00:00 half a line"] and code in window.CTRL_C_EXIT
+
+
+def test_run_refuses_a_missing_photo_without_opening_a_window(monkeypatch, tmp_path):
+    monkeypatch.setattr(window.subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+    seen = []
+    assert window.run(["finish", "nope.jpg", "--variant", "1"], "finish", tmp_path / "nope.jpg", seen.append) == 1
+    assert "no such photo" in seen[0]
+
+
+class FakeProc:
+    def __init__(self, pid, cmdline, name="python.exe", kids=()):
+        self.pid, self._cmd, self._name, self.kids, self.killed = pid, cmdline, name, list(kids), False
+
+    def children(self, recursive=False):
+        return self.kids
+
+    def cmdline(self):
+        return self._cmd
+
+    def name(self):
+        return self._name
+
+    def kill(self):
+        self.killed = True
+
+    def is_running(self):
+        return not self.killed
+
+
+def test_stop_kills_the_job_not_the_window_and_stops_local_image(monkeypatch, tmp_path):
+    log = tmp_path / "job.log"
+    log.write_text("", encoding="utf-8")
+    win = window_cmdline("variants", log=str(log))
+    logtee_child = FakeProc(11, win)
+    host = FakeProc(12, ["conhost.exe"], name="conhost.exe")
+    job = FakeProc(13, ["python.exe", "upscale.py", "--in-window", "variants"])
+    engine = FakeProc(14, ["python.exe", "generate.py"])
+    top = FakeProc(10, win, kids=[logtee_child, host, job, engine])
+
+    class FakePsutil:
+        NoSuchProcess = ProcessLookupError
+
+        @staticmethod
+        def Process(pid):
+            assert pid == 10
+            return top
+
+        @staticmethod
+        def wait_procs(procs, timeout=None):
+            return procs, []
+
+    monkeypatch.setitem(sys.modules, "psutil", FakePsutil)
+    monkeypatch.setattr(window, "jobs", lambda: [dict(window.describe(win), pid=10)])
+    stopped = []
+    from upscale import qwen
+    monkeypatch.setattr(qwen, "stop", lambda detached=False: stopped.append(detached))
+    out = []
+    assert window.stop(out=out.append) == 0
+    assert job.killed and engine.killed and not logtee_child.killed and not host.killed
+    assert stopped == [False] and not Path(str(log) + ".stop").exists()
+    assert log.read_text(encoding="utf-8").strip().endswith(window.STOPPED)
+    monkeypatch.setattr(window, "jobs", lambda: [])
+    assert window.stop(out=out.append) is None and window.stop(only=10, out=out.append) is None

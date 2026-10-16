@@ -44,33 +44,38 @@ def parse_corners(s):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="upscale", description="Restore and upscale photos locally.")
+    # No abbreviations: upscale.py stop reads a job's options from its command line (--keep-server).
+    ap = argparse.ArgumentParser(prog="upscale", description="Restore and upscale photos locally.",
+                                 allow_abbrev=False)
     ap.add_argument("--in-window", action="store_true", help=argparse.SUPPRESS)  # set by window.run
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("status", help="check local-image, the engine, the weights and the GPU")
-    sub.add_parser("stop", help="stop a running variants or finish job (as stop.cmd does) and free the GPU")
+    def add(name, **k):
+        return sub.add_parser(name, allow_abbrev=False, **k)
 
-    c = sub.add_parser("crop", help="straighten and crop a photographed print (before variants)")
+    add("status", help="check local-image, the engine, the weights and the GPU")
+    add("stop", help="stop a running variants or finish job (as stop.cmd does) and free the GPU")
+
+    c = add("crop", help="straighten and crop a photographed print (before variants)")
     c.add_argument("photo", type=Path)
     c.add_argument("--inset", type=float, default=0.02, help="fraction trimmed from each side (default 0.02)")
     c.add_argument("--corners", type=parse_corners,
                    help="manual corners x1,y1,...,x4,y4 (TL TR BR BL); use --corners=... if one is negative")
     c.add_argument("--out", type=Path, help="default: input/<photo>_cropped.jpg")
 
-    v = sub.add_parser("variants", help="4 cleaned-up versions to choose from (Qwen-Image)")
+    v = add("variants", help="4 cleaned-up versions to choose from (Qwen-Image)")
     v.add_argument("photo", type=Path)
     v.add_argument("--ref", type=Path, nargs="+", default=[], help="other photos of the same people (faces only)")
     v.add_argument("--colorize", action="store_true", help="black-and-white photo: restore and colorize")
     v.add_argument("--seeds", type=int, nargs=2, help="two seeds (2 variants each); random if omitted")
     v.add_argument("--keep-server", action="store_true", help="leave the local-image server running")
 
-    m = sub.add_parser("mix", help="take faces from other variants into one (no --face: list the faces)")
+    m = add("mix", help="take faces from other variants into one (no --face: list the faces)")
     m.add_argument("photo", type=Path)
     m.add_argument("--base", type=int, required=True)
     m.add_argument("--face", nargs="+", help="N=V: face N (left to right) from variant V")
 
-    f = sub.add_parser("finish", help="SeedVR2 upscale of the chosen variant (--model, or the install default), then the final")
+    f = add("finish", help="SeedVR2 upscale of the chosen variant (--model, or the install default), then the final")
     f.add_argument("photo", type=Path)
     f.add_argument("--variant", type=int, required=True)
     f.add_argument("--full", action="store_true", help="keep the full upscale resolution as the final")
@@ -112,7 +117,7 @@ def status() -> int:
 
 def stop() -> int:
     from upscale import qwen, window
-    code = window.stop()
+    code = window.stop() or 0
     used = qwen.gpu_used_mb()
     if used is not None:
         print(f"  VRAM now in use: {used} MB")

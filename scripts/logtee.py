@@ -6,7 +6,8 @@ Taken from local-image's scripts/logtee.py (which runs its server), with two add
 that end: --title names the console window, and --hold-on-error keeps the window up for S seconds
 after the command fails, so the error can be read, then exits 0 (a clean exit, so Windows
 Terminal closes the tab too); the command's own exit code is in the log's last line either way.
-The hold is skipped when <log>.stop exists: upscale.py stop writes it while it stops the job.
+The hold is skipped when <log>.stop exists (upscale.py stop writes it while it stops the job) and
+after Ctrl+C in the window.
 
 Everything the command prints (stdout and stderr) goes to the log, timestamped; the
 previous run's log is kept as <name>.previous.log. The console shows only lines that
@@ -157,9 +158,10 @@ def main() -> int:
     log.close()
     if not args.hold_on_error or code == 0:
         return code
-    # upscale.py stop leaves <log>.stop while it stops the job: close at once. Otherwise the job
-    # failed on its own, so keep the window up long enough to read why.
-    if not Path(str(args.log) + ".stop").exists():
+    # upscale.py stop leaves <log>.stop while it stops the job, and Ctrl+C in the window ends it
+    # with STATUS_CONTROL_C_EXIT: close at once. Otherwise the job failed on its own, so keep the
+    # window up long enough to read why.
+    if not Path(str(args.log) + ".stop").exists() and code & 0xFFFFFFFF != 0xC000013A:
         hold(args.hold_on_error)
     return 0
 

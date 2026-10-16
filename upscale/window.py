@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -37,6 +38,7 @@ KEEP_LOGS = 50
 EXIT = re.compile(r"=== exited with code (-?\d+)")
 CONSOLE_HOSTS = ("conhost.exe", "openconsole.exe")
 STOPPED = "Stopped by upscale.py stop (stop.cmd or Ctrl+C)."
+CTRL_C_EXIT = (0xC000013A, -0x3FFFFEC6)  # STATUS_CONTROL_C_EXIT, unsigned and signed
 
 
 # --- the window ---------------------------------------------------------------------------------
@@ -51,7 +53,7 @@ def new_log(cmd: str, photo: Path) -> Path:
     for p in old[:max(0, len(old) - KEEP_LOGS + 1)]:
         p.unlink(missing_ok=True)
     stem = re.sub(r'[<>:"/\\|?*\s]+', "_", Path(photo).stem)[:60]
-    return LOGS / f"{time.strftime('%Y%m%d-%H%M%S')}_{cmd}_{stem}.log"
+    return LOGS / f"{time.strftime('%Y%m%d-%H%M%S')}_{os.getpid()}_{cmd}_{stem}.log"
 
 
 def command(argv: list[str], cmd: str, photo: Path, log: Path) -> list[str]:
@@ -63,28 +65,96 @@ def command(argv: list[str], cmd: str, photo: Path, log: Path) -> list[str]:
 
 def run(argv: list[str], cmd: str, photo: Path, out=print) -> int:
     """Run `upscale.py <argv>` in a new visible console window; echo its log here until it ends.
-    Returns the job's exit code (1 if its window was closed first, 130 after Ctrl+C here)."""
-    busy = jobs()
-    if busy:
-        out(f"error: a local-upscale job is already running ({busy[0]['what']}): look for its window, "
-            "or run stop.cmd to stop it. The GPU only holds one at a time.")
+    Returns the job's exit code (1 if its window was closed first or stop.cmd ended it, 130 after
+    Ctrl+C)."""
+    if not Path(photo).is_file():  # don't open a window only to show this for a minute
+        out(f"error: no such photo: {photo}")
         return 1
     log = new_log(cmd, photo)
-    out(f'Running in its own window ("{title(cmd, photo)}").\n'
-        f"Close that window, or run stop.cmd, to stop it and free the GPU. Log: {log}")
-    # No handles of ours go with it (close_fds, no redirection): the window would otherwise hold
-    # our stdout open, and whoever reads our output (a pipe, an agent) would wait on the window.
-    proc = subprocess.Popen(command(argv, cmd, photo, log), creationflags=subprocess.CREATE_NEW_CONSOLE)
+    full = command(argv, cmd, photo, log)
+    proc = None
     try:
+        with launch_lock():  # two starts at once must not both pass the one-job check
+            busy = jobs()
+            if busy:
+                out(f"error: a local-upscale job is already running ({busy[0]['what']}): look for its "
+                    "window, or run stop.cmd to stop it. The GPU only holds one at a time.")
+                return 1
+            out(f'Running in its own window ("{title(cmd, photo)}").\n'
+                f"Close that window, or run stop.cmd, to stop it and free the GPU. Log: {log}")
+            # No handles of ours go with it (close_fds, no redirection): the window would otherwise
+            # hold our stdout open, and whoever reads our output (a pipe, an agent) would wait on it.
+            proc = subprocess.Popen(full, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            _wait_started(proc, log)  # until jobs() can see it
         code = follow(proc, log, out)
     except KeyboardInterrupt:
         out("Ctrl+C: stopping the job.")
-        stop(only=proc.pid, out=out)
+        if proc and stop(only=proc.pid, out=out) is None:  # not found: kill the window outright
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+            _closed(full, out)
         return 130
     if code is None:
         out("The job's window was closed before it finished, so the job stopped.")
+        _closed(full, out)
         return 1
+    if code in CTRL_C_EXIT:
+        out("The job was stopped with Ctrl+C in its window.")
+        return 130
     return code
+
+
+def _closed(full: list[str], out) -> None:
+    """The window went away without the job finishing. A variants job may not have managed to stop
+    local-image's server (in its own window) on the way out; we are outside that console, so do it."""
+    if describe(full)["stops_local_image"]:
+        from . import qwen
+        out("Stopping local-image's server, as the job would have.")
+        try:
+            qwen.stop()
+        except qwen.LocalImageMissing:
+            pass
+
+
+def _wait_started(proc, log: Path, seconds: float = 15) -> None:
+    """Until the job's first line is in the log (logtee is running it), or the window is gone."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end and proc.poll() is None:
+        try:
+            if log.stat().st_size > 0 and b"\n" in log.read_bytes().split(b"\n", 1)[1]:
+                return
+        except (OSError, IndexError):
+            pass
+        time.sleep(0.1)
+
+
+class launch_lock:
+    """An exclusive lock on logs/launch.lock while a job is checked for and started."""
+
+    def __enter__(self):
+        LOGS.mkdir(parents=True, exist_ok=True)
+        self.f = open(LOGS / "launch.lock", "a+b")
+        try:
+            import msvcrt
+        except ImportError:
+            return self
+        end = time.monotonic() + 30
+        while True:
+            try:
+                self.f.seek(0)
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_NBLCK, 1)
+                self.locked = msvcrt
+                return self
+            except OSError:
+                if time.monotonic() > end:
+                    return self  # a stuck holder: go ahead rather than never start
+                time.sleep(0.2)
+
+    def __exit__(self, *exc):
+        m = getattr(self, "locked", None)
+        if m:
+            self.f.seek(0)
+            m.locking(self.f.fileno(), m.LK_UNLCK, 1)
+        self.f.close()
 
 
 def follow(proc, log: Path, out=print, poll: float = 0.3) -> int | None:
@@ -116,28 +186,48 @@ def follow(proc, log: Path, out=print, poll: float = 0.3) -> int | None:
 
 _on_close: list = []
 _handler = None
+closing = threading.Event()   # set once the window is being closed
+_done = threading.Event()     # set once the close actions have run
 CLOSE_EVENTS = (2, 5, 6)  # CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT
+CLOSE_GRACE = 0.5
+
+
+def _run_close_actions() -> None:
+    closing.set()
+    for a in list(_on_close):
+        try:
+            a()
+        except Exception:
+            pass
+    _done.set()
 
 
 def on_close(action):
     """Run `action` (quick: Windows allows ~5 s) if this process's console window is closed.
     Returns a function that cancels it. Closing the window kills everything attached to it, but
-    not what runs in another window, such as local-image's server."""
+    not what runs in another window, such as local-image's server.
+
+    The close also kills our console children (local-image's client), so the main thread can
+    reach its cleanup, and cancel, while the handler thread is still starting. So cancel first
+    gives a close CLOSE_GRACE seconds to show up, and if the window is closing it leaves the
+    action in place and waits (up to 4 s) for it to have run; the caller then checks `closing`."""
     global _handler
     if os.name == "nt" and _handler is None:
         @ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)
         def handler(event):
             if event in CLOSE_EVENTS:
-                for a in list(_on_close):
-                    try:
-                        a()
-                    except Exception:
-                        pass
+                _run_close_actions()
             return 0  # let Windows (or Python, for Ctrl+C) carry on as usual
         _handler = handler  # keep a reference, or the callback is collected
         ctypes.windll.kernel32.SetConsoleCtrlHandler(_handler, True)
     _on_close.append(action)
-    return lambda: action in _on_close and _on_close.remove(action)
+
+    def cancel():
+        if closing.wait(CLOSE_GRACE):
+            _done.wait(4)
+        elif action in _on_close:
+            _on_close.remove(action)
+    return cancel
 
 
 def detached(cmd: list[str]) -> None:
@@ -166,12 +256,15 @@ def is_window(cmdline: list[str]) -> bool:
 def describe(cmdline: list[str]) -> dict:
     """The job a window's command line runs: its command, photo, log, and whether it stops
     local-image's server when it ends."""
+    def after(flag):
+        return cmdline[cmdline.index(flag) + 1] if flag in cmdline[:-1] else None
+
     job = cmdline[cmdline.index("--in-window") + 1:] if "--in-window" in cmdline else []
     cmd = next((a for a in job if a in WINDOWED), "?")
-    rest = job[job.index(cmd) + 1:] if cmd in job else []
-    photo = rest[0] if rest else "?"
-    log = cmdline[cmdline.index("--log") + 1] if "--log" in cmdline else None
-    return {"cmd": cmd, "what": f"{cmd} {Path(photo).name}", "log": log,
+    t = after("--title") or ""  # title() put the command and the photo's name there
+    what = t[len("local-upscale "):t.rfind(" - ")] if t.startswith("local-upscale ") and " - " in t else cmd
+    # The parser takes no abbreviations (allow_abbrev=False), so --keep-server is spelled out.
+    return {"cmd": cmd, "what": what, "log": after("--log"),
             "stops_local_image": cmd == "variants" and "--keep-server" not in job}
 
 
@@ -198,15 +291,16 @@ def jobs(procs=None) -> list[dict]:
             if p.get("ppid") not in mine and busy(pid)]
 
 
-def stop(only: int | None = None, out=print) -> int:
+def stop(only: int | None = None, out=print) -> int | None:
     """Stop this install's running jobs (or only the one whose window process is `only`), close
     their windows, and stop local-image's server if a stopped job would have stopped it.
-    Exit status: 0 stopped or nothing running, 1 something survived."""
+    Returns 0 stopped, 1 something survived, None nothing was running."""
     import psutil
     found = [j for j in jobs() if only is None or j["pid"] == only]
     if not found:
-        out("  No local-upscale job is running.")
-        return 0
+        if only is None:
+            out("  No local-upscale job is running.")
+        return None
     windows, victims, markers = [], [], []
     for j in found:
         try:
