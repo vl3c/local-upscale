@@ -46,11 +46,11 @@ def local_image_dir() -> Path:
 
 
 def cache_env() -> dict:
-    """Environment for child processes: every cache inside the repo, UTF-8 console output."""
+    """Environment for child processes: every cache inside the repo, UTF-8 output as it is written."""
     return dict(os.environ,
                 HF_HOME=str(CACHE / "huggingface"), HF_HUB_CACHE=str(CACHE / "huggingface" / "hub"),
                 TORCH_HOME=str(CACHE / "torch"), TRITON_CACHE_DIR=str(CACHE / "triton"),
-                PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+                PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
 
 
 def manifest() -> dict:

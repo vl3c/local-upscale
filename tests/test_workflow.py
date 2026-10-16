@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 
-from upscale import config, images, qwen, seedvr2, workflow
+from upscale import config, images, qwen, seedvr2, window, workflow
 
 
 def quiet(*a):
@@ -20,7 +20,7 @@ def env(tmp_path, monkeypatch):
     photo = tmp_path / "input" / "family photo.jpg"
     rng = np.random.default_rng(5)
     images.save(photo, cv2.GaussianBlur(rng.integers(0, 255, (300, 400, 3), dtype=np.uint8), (0, 0), 3))
-    calls = {"stop": 0, "edit": []}
+    calls = {"stop": 0, "stop_detached": 0, "edit": []}
 
     def fake_edit(prompt, imgs, out_dir, scale, count, seed, timeout=3600):
         calls["edit"].append((prompt, [Path(p).name for p in imgs], scale, count, seed))
@@ -32,8 +32,8 @@ def env(tmp_path, monkeypatch):
             made.append(p)
         return made
 
-    def fake_stop():
-        calls["stop"] += 1
+    def fake_stop(detached=False):
+        calls["stop_detached" if detached else "stop"] += 1
 
     monkeypatch.setattr(qwen, "edit", fake_edit)
     monkeypatch.setattr(qwen, "stop", fake_stop)
@@ -68,6 +68,27 @@ def test_server_stopped_even_when_an_edit_fails(env, monkeypatch):
     assert calls["stop"] == 1
 
 
+def test_closing_the_window_stops_local_image(env, monkeypatch):
+    """While Qwen runs, closing the job's window must still stop local-image's server (in its
+    own window); the action is withdrawn once variants stops it itself."""
+    photo, calls = env
+    edit = qwen.edit
+    pending = []
+
+    def edit_then_close(*a, **k):
+        pending.extend(window._on_close)
+        for action in window._on_close:  # what the console handler runs on CTRL_CLOSE_EVENT
+            action()
+        return edit(*a, **k)
+
+    monkeypatch.setattr(qwen, "edit", edit_then_close)
+    workflow.variants(photo, seeds=[1, 2], log=quiet)
+    assert pending and calls["stop_detached"] == 2 and calls["stop"] == 1 and not window._on_close
+    calls["stop_detached"] = 0
+    workflow.variants(photo, seeds=[1, 2], keep_server=True, log=quiet)
+    assert calls["stop_detached"] == 0 and not window._on_close
+
+
 def test_rerun_after_deleting_work_never_overwrites(env):
     photo, _ = env
     workflow.variants(photo, seeds=[1, 2], log=quiet)
@@ -93,7 +114,7 @@ def test_finish_names_sizes_and_model(env, monkeypatch):
     workflow.variants(photo, seeds=[1, 2], log=quiet)
     seen = {}
 
-    def fake_upscale(img, scale, log_path, model=None):
+    def fake_upscale(img, scale, log_path, model=None, progress=print):
         seen.update(scale=scale, model=model)
         h, w = img.shape[:2]
         return cv2.resize(img, (w * scale, h * scale)), {"tiles": 2, "tile_in": 1008, "seconds": 1,

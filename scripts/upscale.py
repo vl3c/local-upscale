@@ -5,12 +5,18 @@
     python scripts/upscale.py variants input/photo.jpg [--ref other.jpg ...] [--colorize] [--seeds A B]
     python scripts/upscale.py mix      input/photo.jpg --base 3 [--face 1=2 2=4]
     python scripts/upscale.py finish   input/photo.jpg --variant 2 [--full] [--no-sharpened] [--model 7b|7b-sharp|3b]
+    python scripts/upscale.py stop
+
+variants and finish use the GPU, so they run in their own visible window (see upscale/window.py):
+this command waits for the job and echoes its log. Close that window, or run `stop` (stop.cmd),
+to stop the job and free the GPU.
 
 Run with the repo's .venv Python. See README.md and docs/workflow.md.
 """
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -39,9 +45,11 @@ def parse_corners(s):
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="upscale", description="Restore and upscale photos locally.")
+    ap.add_argument("--in-window", action="store_true", help=argparse.SUPPRESS)  # set by window.run
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status", help="check local-image, the engine, the weights and the GPU")
+    sub.add_parser("stop", help="stop a running variants or finish job (as stop.cmd does) and free the GPU")
 
     c = sub.add_parser("crop", help="straighten and crop a photographed print (before variants)")
     c.add_argument("photo", type=Path)
@@ -102,10 +110,33 @@ def status() -> int:
     return 0 if ok else 1
 
 
+def stop() -> int:
+    from upscale import qwen, window
+    code = window.stop()
+    used = qwen.gpu_used_mb()
+    if used is not None:
+        print(f"  VRAM now in use: {used} MB")
+    return code
+
+
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
     a = build_parser().parse_args(argv)
+    try:
+        sys.stdout.reconfigure(errors="replace")  # a piped stdout is cp1252: photo names may not be
+    except (AttributeError, ValueError):
+        pass
     if a.cmd == "status":
         return status()
+    if a.cmd == "stop":
+        return stop()
+    from upscale import window
+    if a.cmd in window.WINDOWED:
+        if not a.in_window and os.name == "nt":
+            return window.run(argv, a.cmd, a.photo)
+        if a.in_window:
+            print(f"  local-upscale {a.cmd} {a.photo.name}\n"
+                  "  Close this window (or run stop.cmd) to stop it and free the GPU.\n", flush=True)
     from upscale import qwen, seedvr2, workflow
     expected = (FileNotFoundError, ValueError, workflow.WorkflowError, seedvr2.SeedVR2Error,
                 qwen.LocalImageMissing, qwen.QwenError)

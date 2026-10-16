@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -128,10 +129,20 @@ def _check_install(dit: str):
 
 # --- running the engine ------------------------------------------------------------------------------
 
-def upscale_tiles(tiles: list[np.ndarray], out_px: int, log_path: Path, model: str | None = None
-                  ) -> tuple[list[np.ndarray], dict]:
+# The engine's lines worth showing as progress: its phases, each tile, and the end.
+PROGRESS = re.compile(r"Phase \d+: [^━]*?(?=\s*━|$)|Upscaling batch \d+/\d+|completed successfully in [\d.]+s")
+
+
+def progress_line(line: str) -> str | None:
+    m = PROGRESS.search(line)
+    return None if not m else "  SeedVR2: " + m.group(0).strip().replace("Upscaling batch", "upscaling tile")
+
+
+def upscale_tiles(tiles: list[np.ndarray], out_px: int, log_path: Path, model: str | None = None,
+                  progress=print) -> tuple[list[np.ndarray], dict]:
     """Upscale equal square tiles to out_px x out_px each with upscaler `model` ('7b', '7b-sharp',
-    '3b'; default: the one chosen at install). The engine's log is written to log_path."""
+    '3b'; default: the one chosen at install). The engine's log is written to log_path, and its
+    phases and tiles are reported through progress()."""
     dit = config.upscaler_file(model)
     cli = _check_install(dit)
     work = ascii_workdir()
@@ -150,12 +161,18 @@ def upscale_tiles(tiles: list[np.ndarray], out_px: int, log_path: Path, model: s
                "--batch_size", "1", "--temporal_overlap", "0", *VAE_ARGS]
         log_path.parent.mkdir(parents=True, exist_ok=True)
         t0 = time.perf_counter()
-        with open(log_path, "w", encoding="utf-8") as log:
-            proc = subprocess.Popen(cmd, cwd=config.ENGINE, env=config.cache_env(), stdout=log,
+        with open(log_path, "wb") as log:
+            proc = subprocess.Popen(cmd, cwd=config.ENGINE, env=config.cache_env(), stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT)
             guard = SpillGuard(proc)
             guard.start()
             try:
+                for line in proc.stdout:  # every line to the log; the progress ones to the window too
+                    log.write(line)
+                    log.flush()
+                    shown = progress_line(line.decode("utf-8", "replace"))
+                    if shown:
+                        progress(shown)
                 proc.wait()
             finally:  # Ctrl+C or any error here must not leave the engine holding the GPU
                 _kill(proc)
@@ -221,13 +238,13 @@ def blend(H: int, W: int, scale: int, t: int, xs: list[int], ys: list[int], tile
 
 
 def upscale(img: np.ndarray, scale: int, log_path: Path, tile: int = 1024, overlap: int = 128,
-            model: str | None = None) -> tuple[np.ndarray, dict]:
+            model: str | None = None, progress=print) -> tuple[np.ndarray, dict]:
     """Upscale a whole image by an integer factor with overlapping tiles and feathered seams.
     1024 px tiles at 2x give the model enough context to recognise faces (small tiles make soft,
     grainy results)."""
     H, W = img.shape[:2]
     t, ov, xs, ys = tile_plan(W, H, scale, tile, overlap)
     crops = [img[y:y + t, x:x + t] for y in ys for x in xs]
-    tiles, stats = upscale_tiles(crops, t * scale, log_path, model)
+    tiles, stats = upscale_tiles(crops, t * scale, log_path, model, progress)
     stats.update(scale=scale, grid=[len(xs), len(ys)])
     return blend(H, W, scale, t, xs, ys, tiles), stats

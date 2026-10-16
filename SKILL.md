@@ -18,6 +18,15 @@ PY=.venv/Scripts/python.exe
 $PY scripts/upscale.py status                     # local-image, engine, weights, GPU
 ```
 
+**`variants` and `finish` open their own visible window** ("local-upscale variants photo.jpg -
+close this window to stop it") and run there; your command waits, echoes the window's lines (Qwen
+edits, variants, SeedVR2 phases and tiles) and returns the job's exit code. Tell the user the window
+is theirs: **closing it stops the job and frees the GPU** (for `variants` it also stops local-image's
+server). To stop a job yourself, run `cmd //c stop.cmd` (or `$PY scripts/upscale.py stop`); don't kill
+processes by hand. Only one of these jobs runs at a time: if one refuses with "already running",
+wait for it or ask the user before stopping it. A failed job's window stays up a minute to show the
+error; the full log is in `logs/`.
+
 ## The loop
 
 1. **Check the GPU** (`nvidia-smi`). local-image needs ~15.5 GB and SeedVR2 ~13 GB (3B ~10 GB), one at a time.
@@ -30,7 +39,7 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
    $PY scripts/upscale.py variants "input/photo.jpg" --colorize  # black-and-white photo
    $PY scripts/upscale.py variants "input/photo.jpg" --ref "input/other.jpg"   # identity reference(s)
    ```
-   Run it in the background and tell the user it's running. Then **Read**
+   Run it in the background and tell the user it's running in its window. Then **Read**
    `output/<photo>/variants/contact_sheet.jpg` and `faces.jpg` yourself, and tell the user what
    differs between the variants: face shape, expression, colour, sharpness, any invented text. Point
    them at `output/<photo>/variants/`, where variant_0_original and the variants flip in order at the

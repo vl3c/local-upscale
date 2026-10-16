@@ -60,8 +60,14 @@ def edit(prompt: str, images: list[Path], out_dir: Path, scale: int, count: int,
     return made
 
 
-def stop() -> None:
-    """Stop the local-image server (it holds ~15.5 GB of VRAM; SeedVR2 needs the card next)."""
+def stop(detached: bool = False) -> None:
+    """Stop the local-image server (it holds ~15.5 GB of VRAM; SeedVR2 needs the card next).
+    detached: start its stop.cmd and return at once, outside this console (for a closing window)."""
     _, stop_cmd = paths()
-    if stop_cmd.exists():
+    if not stop_cmd.exists():
+        return
+    if detached:
+        from .window import detached as start_detached
+        start_detached(["cmd", "/c", str(stop_cmd)])
+    else:
         subprocess.run(["cmd", "/c", str(stop_cmd)], capture_output=True)
