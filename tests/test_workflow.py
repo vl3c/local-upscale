@@ -51,6 +51,7 @@ def test_variants_layout_numbering_and_stop(env):
     assert (d / "variants" / "variant_0_original_400x300.jpg").exists()
     assert (d / "family photo_0_original_400x300.jpg").exists()
     assert (d / "variants" / "contact_sheet.jpg").exists()
+    assert "variants/variant_4_400x300.png" in (d / "compare.html").read_text(encoding="utf-8")
     assert calls["stop"] == 1 and [c[4] for c in calls["edit"]] == [1, 2]
     info = json.loads((d / "work" / "variants.json").read_text(encoding="utf-8"))
     assert [v["n"] for v in info["variants"]] == [1, 2, 3, 4] and info["photo_sha256"]
@@ -110,6 +111,7 @@ def test_finish_names_sizes_and_model(env, monkeypatch):
     bw, bh = (int(v) for v in big.stem.split("_")[-1].split("x"))
     assert bw == 2688 and abs(bw / bh - 400 / 300) < 0.002   # the original's proportions, not Qwen's
     assert seen == {"scale": 2, "model": "3b"}
+    assert f"family%20photo_2_final_v2_3b_{tw}x{th}.png" in (d / "compare.html").read_text(encoding="utf-8")
     with pytest.raises(workflow.WorkflowError, match="original"):
         workflow.finish(photo, 0, log=quiet)
     with pytest.raises(workflow.WorkflowError, match="not found"):

@@ -44,6 +44,11 @@ People judge familiar faces with extreme sensitivity: a millimetre of difference
 mouth corner reads as "not them". Every seed draws faces slightly differently, so the variants are
 compared by face. `variants/faces.jpg` shows up to three faces side by side across all variants.
 
+`compare.html` in the photo's folder puts the original, the variants and later the finals in one
+place, stacked at the same size, so flipping with the number keys shows exactly what changed. It only
+links the images next to it, so it opens from disk with no network access. It is written every
+time variants are made or change, and `compare` writes one for any other set of variants.
+
 `mix` combines variants when each person looks best in a different one. Faces are numbered left to
 right (`mix` without `--face` writes `variants/faces_numbered.jpg`; check it, since the detector can
 also box a hand or a printed face on a shirt). For each replaced face:

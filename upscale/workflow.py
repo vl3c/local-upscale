@@ -7,6 +7,7 @@ Layout of output/<photo>/ (the top level is the set to flip through, in viewing 
     <photo>_2_final_vN_<model>_<final>.png           THE RESULT: original resolution, or 2K if smaller
     <photo>_3_final_vN_<model>_<final>_sharpened.png
     <photo>_4_upscaled_vN_<model>_<big>.png          the full SeedVR2 output (2x the Qwen output; 3-4x for very large originals)
+    compare.html     opened from disk: flip between all of the above and the variants with keys 1, 2, 3...
     variants/  variant_0_original_*, variant_N_WxH.png, contact_sheet.jpg, faces.jpg (+ faces_numbered.jpg from mix)
     work/      Qwen's native outputs, variants.json (seeds, photo checksum), SeedVR2 logs, comparisons
 """
@@ -21,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config, faces, prompts, qwen, seedvr2
+from . import compare, config, faces, prompts, qwen, seedvr2
 from .images import (final_size, grid, label, qwen_scale, read, resize, save, sr_factor, to_height,
                      unsharp)
 
@@ -128,13 +129,15 @@ def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: 
         shutil.rmtree(tmp, ignore_errors=True)
     write_overviews(photo)
     log(f"done: {v}")
+    log(f"compare: {d / compare.PAGE}")
     return v
 
 
 def write_overviews(photo: Path) -> None:
     """contact_sheet.jpg and faces.jpg for the variants that still exist in variants/ (the user may
-    delete rejects). faces_numbered.jpg is written by `mix`, for the base it mixes into."""
+    delete rejects), and compare.html. faces_numbered.jpg is written by `mix`, for the base it mixes into."""
     d, v, w = folders(photo)
+    compare.write(d, prefix=photo.stem)
     orig = read(photo)
     h, wd = orig.shape[:2]
     have = [(n, v / f"variant_{n}_{wd}x{h}.png") for n in sorted(used_numbers(d))]
@@ -246,7 +249,9 @@ def finish(photo: Path, variant: int, full: bool = False, sharpened: bool = True
     save(w / f"compare_original_vs_final_v{n}_{key}.jpg",
          np.hstack([label(to_height(ref, 900), "original"),
                     label(to_height(final, 900), f"final (variant {n}, {key})")]))
+    compare.write(d, prefix=stem)
     log(f"done: {out}")
+    log(f"compare: {d / compare.PAGE}")
     return out
 
 
