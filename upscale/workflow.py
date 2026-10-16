@@ -110,7 +110,7 @@ def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: 
     tmp = w / "_qwen"
     # local-image's server lives in its own window, so closing the job's window doesn't stop it, and
     # the close can end this process before or during the finally below: stop it from the console
-    # close handler too (window.on_close explains the race with cancel()).
+    # close handler too (window.on_close explains the order of the finally below).
     cancel = None if keep_server else window.on_close(lambda: qwen.stop(detached=True))
     try:
         for seed in seeds:  # 2 batches of 2: one batch of 4 at 2048 px overflows 16 GB and crawls
@@ -128,9 +128,9 @@ def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: 
                 log(f"  variant {n}")
     finally:
         if not keep_server:
-            cancel()
-            if not window.closing.is_set():  # if it is, the close handler has stopped it
+            if not window.closing.wait(window.CLOSE_GRACE):  # closing: the handler stops it
                 qwen.stop()
+            cancel()  # only now, so a close during the stop still finds the handler's action
         shutil.rmtree(tmp, ignore_errors=True)
     write_overviews(photo)
     log(f"done: {v}")

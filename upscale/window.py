@@ -3,7 +3,7 @@
 `variants` and `finish` hold the GPU for minutes, so upscale.py doesn't run them out of sight: it
 opens a new console window titled "local-upscale <command> <photo> - close this window to stop it"
 and runs the job there through scripts/logtee.py. The window shows the job's progress and any
-errors; everything goes to logs/<time>_<command>_<photo>.log. The command you ran waits, echoes the
+errors; everything goes to logs/<time>_<pid>_<command>_<photo>.log. The command you ran waits, echoes the
 log as it grows, and exits with the job's exit code, so scripts and agents see what they always did.
 
 Stopping it:
@@ -11,7 +11,7 @@ Stopping it:
   local-image's client), which frees the GPU and RAM; `variants` also stops local-image's server,
   which runs in its own window, as it does when it finishes (see on_close);
 - or run stop.cmd (`upscale.py stop`), which stops it and closes the window;
-- or press Ctrl+C in the command you ran.
+- or press Ctrl+C in the window, or in the command you ran.
 If the job fails on its own, its window stays up for a minute so the error can be read.
 
 One GPU job at a time per install: a second `variants` or `finish` refuses to start while one runs.
@@ -66,10 +66,7 @@ def command(argv: list[str], cmd: str, photo: Path, log: Path) -> list[str]:
 def run(argv: list[str], cmd: str, photo: Path, out=print) -> int:
     """Run `upscale.py <argv>` in a new visible console window; echo its log here until it ends.
     Returns the job's exit code (1 if its window was closed first or stop.cmd ended it, 130 after
-    Ctrl+C)."""
-    if not Path(photo).is_file():  # don't open a window only to show this for a minute
-        out(f"error: no such photo: {photo}")
-        return 1
+    Ctrl+C). upscale.py checks the input files first, so a typo doesn't open a window."""
     log = new_log(cmd, photo)
     full = command(argv, cmd, photo, log)
     proc = None
@@ -82,14 +79,15 @@ def run(argv: list[str], cmd: str, photo: Path, out=print) -> int:
                 return 1
             out(f'Running in its own window ("{title(cmd, photo)}").\n'
                 f"Close that window, or run stop.cmd, to stop it and free the GPU. Log: {log}")
-            # No handles of ours go with it (close_fds, no redirection): the window would otherwise
-            # hold our stdout open, and whoever reads our output (a pipe, an agent) would wait on it.
-            proc = subprocess.Popen(full, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            proc = start(full)
             _wait_started(proc, log)  # until jobs() can see it
         code = follow(proc, log, out)
     except KeyboardInterrupt:
+        if not proc:
+            out("Ctrl+C: nothing was started.")
+            return 130
         out("Ctrl+C: stopping the job.")
-        if proc and stop(only=proc.pid, out=out) is None:  # not found: kill the window outright
+        if stop(only=proc.pid, out=out) is None:  # not found: kill the window outright
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
             _closed(full, out)
         return 130
@@ -99,8 +97,55 @@ def run(argv: list[str], cmd: str, photo: Path, out=print) -> int:
         return 1
     if code in CTRL_C_EXIT:
         out("The job was stopped with Ctrl+C in its window.")
+        _closed(full, out)  # a second Ctrl+C there can cut its own cleanup short
         return 130
     return code
+
+
+START = """import subprocess, sys
+flags = subprocess.CREATE_NEW_CONSOLE
+try:
+    p = subprocess.Popen(sys.argv[1:], creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB)
+except OSError:  # a job object that doesn't allow breaking away
+    p = subprocess.Popen(sys.argv[1:], creationflags=flags)
+print(p.pid)
+"""
+
+
+class Window:
+    """The job window's top process, watched by pid (Popen-like: pid, poll())."""
+
+    def __init__(self, pid: int):
+        import psutil
+        self.pid = pid
+        try:
+            self._p = psutil.Process(pid)
+        except psutil.NoSuchProcess:
+            self._p = None
+
+    def poll(self):
+        try:
+            return None if self._p and self._p.is_running() and self._p.status() != "zombie" else 1
+        except Exception:
+            return 1
+
+
+def start(full: list[str]):
+    """Open the window outside our process tree, as local-image's start.cmd does with `start`: a
+    short-lived Python starts it and exits. So stopping the command that started it (an agent
+    ending its background task kills that command's process tree or job object) leaves the job
+    on screen for the user, rather than killing it unseen with local-image's server still holding
+    the GPU. No handles of ours go with it (no redirection, close_fds): the window would otherwise
+    hold our stdout open, and whoever reads our output (a pipe, an agent) would wait on it."""
+    try:
+        import psutil  # noqa: F401  (Window needs it)
+    except ImportError:
+        return subprocess.Popen(full, creationflags=subprocess.CREATE_NEW_CONSOLE)
+    r = subprocess.run([sys.executable, "-c", START, *full], capture_output=True, text=True)
+    pid = r.stdout.strip()
+    if r.returncode != 0 or not pid.isdigit():
+        raise OSError(f"could not open the job window: {r.stderr.strip()[-500:]}")
+    return Window(int(pid))
 
 
 def _closed(full: list[str], out) -> None:
@@ -208,9 +253,10 @@ def on_close(action):
     not what runs in another window, such as local-image's server.
 
     The close also kills our console children (local-image's client), so the main thread can
-    reach its cleanup, and cancel, while the handler thread is still starting. So cancel first
-    gives a close CLOSE_GRACE seconds to show up, and if the window is closing it leaves the
-    action in place and waits (up to 4 s) for it to have run; the caller then checks `closing`."""
+    reach its cleanup while the handler thread is still starting. The cleanup should therefore
+    give a close CLOSE_GRACE seconds to show up (`closing.wait(CLOSE_GRACE)`) and cancel only
+    after doing its own stop, so a close at any point finds the action in place. Once the window
+    is closing, cancel leaves the action and waits (up to 4 s) for it to have run."""
     global _handler
     if os.name == "nt" and _handler is None:
         @ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)
@@ -223,7 +269,7 @@ def on_close(action):
     _on_close.append(action)
 
     def cancel():
-        if closing.wait(CLOSE_GRACE):
+        if closing.is_set():
             _done.wait(4)
         elif action in _on_close:
             _on_close.remove(action)

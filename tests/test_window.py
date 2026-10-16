@@ -85,15 +85,22 @@ def test_new_log_is_named_by_command_and_photo_and_pruned(monkeypatch, tmp_path)
     assert len(list(tmp_path.glob("*.log"))) == window.KEEP_LOGS - 1
 
 
-def test_cli_hands_gpu_commands_to_the_window(monkeypatch):
+def load_cli():
     spec = importlib.util.spec_from_file_location("cli_w", ROOT / "scripts" / "upscale.py")
     cli = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cli)
+    return cli
+
+
+def test_cli_hands_gpu_commands_to_the_window(monkeypatch, tmp_path):
+    cli = load_cli()
     seen = []
     monkeypatch.setattr(window, "run", lambda argv, cmd, photo: seen.append((argv, cmd, photo)) or 7)
     monkeypatch.setattr(cli.os, "name", "nt")
-    assert cli.main(["finish", "x.jpg", "--variant", "2"]) == 7
-    assert seen == [(["finish", "x.jpg", "--variant", "2"], "finish", Path("x.jpg"))]
+    x = tmp_path / "x.jpg"
+    x.write_bytes(b"x")
+    assert cli.main(["finish", str(x), "--variant", "2"]) == 7
+    assert seen == [(["finish", str(x), "--variant", "2"], "finish", x)]
     assert cli.build_parser().parse_args(["--in-window", "finish", "x.jpg", "--variant", "2"]).in_window
 
 
@@ -159,11 +166,14 @@ def test_follow_stopped_ctrl_c_and_split_lines(tmp_path):
     assert seen == ["12:00:00 half a line"] and code in window.CTRL_C_EXIT
 
 
-def test_run_refuses_a_missing_photo_without_opening_a_window(monkeypatch, tmp_path):
-    monkeypatch.setattr(window.subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
-    seen = []
-    assert window.run(["finish", "nope.jpg", "--variant", "1"], "finish", tmp_path / "nope.jpg", seen.append) == 1
-    assert "no such photo" in seen[0]
+def test_missing_files_are_reported_without_opening_a_window(monkeypatch, tmp_path):
+    cli = load_cli()
+    monkeypatch.setattr(window, "run", lambda *a: (_ for _ in ()).throw(AssertionError))
+    monkeypatch.setattr(cli.os, "name", "nt")
+    photo = tmp_path / "p.jpg"
+    photo.write_bytes(b"x")
+    assert cli.main(["finish", str(tmp_path / "nope.jpg"), "--variant", "1"]) == 1
+    assert cli.main(["variants", str(photo), "--ref", str(tmp_path / "gone.jpg")]) == 1
 
 
 class FakeProc:

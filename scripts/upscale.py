@@ -138,6 +138,10 @@ def main(argv=None) -> int:
     from upscale import window
     if a.cmd in window.WINDOWED:
         if not a.in_window and os.name == "nt":
+            missing = [p for p in [a.photo, *getattr(a, "ref", [])] if not p.is_file()]
+            if missing:  # don't open a window only to show this for a minute
+                print(f"error: no such file: {', '.join(map(str, missing))}", file=sys.stderr)
+                return 1
             return window.run(argv, a.cmd, a.photo)
         if a.in_window:
             print(f"  local-upscale {a.cmd} {a.photo.name}\n"

@@ -42,6 +42,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(window, "CLOSE_GRACE", 0)
     monkeypatch.setattr(window, "closing", threading.Event())
     monkeypatch.setattr(window, "_done", threading.Event())
+    monkeypatch.setattr(window, "_on_close", [])
     monkeypatch.setattr(workflow.faces, "detect", lambda img, **k: [])
     return photo, calls
 

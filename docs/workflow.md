@@ -83,14 +83,14 @@ also box a hand or a printed face on a shirt). For each replaced face:
 nothing holds the GPU out of sight (`upscale/window.py`). The command you type relaunches itself as
 `upscale.py --in-window ...` in a new console, through `scripts/logtee.py` (local-image's, plus a
 window title and a one-minute hold after a failure), and then echoes the job's log
-(`logs/<time>_<command>_<photo>.log`) until logtee records the exit code.
+(`logs/<time>_<pid>_<command>_<photo>.log`) until logtee records the exit code.
 
 - **Closing the window** stops the job: Windows ends every process attached to the console, which
   covers the job, the SeedVR2 engine and local-image's client. local-image's server runs in its
   own window, so `variants` also registers a console close handler that starts local-image's
   stop.cmd outside the closing console (Windows allows a handler about 5 seconds). The close
   kills local-image's client at the same moment, so the job's own cleanup gives the handler half
-  a second to show up before withdrawing it (tested by closing a pseudoconsole, which is what a
+  a second to show up, and withdraws it only after its own stop (tested by closing a pseudoconsole, which is what a
   Windows Terminal tab is). If the command that started the job is still waiting, it stops the
   server too once it sees the window gone.
 - **`stop.cmd`** (`upscale.py stop`) finds this install's job windows by their command line
