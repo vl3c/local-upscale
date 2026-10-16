@@ -35,7 +35,7 @@ $PY scripts/upscale.py status                     # local-image, engine, weights
    differs between the variants: face shape, expression, colour, sharpness, any invented text. Give
    them the local path of `output/<photo>/compare.html` (written by every `variants`, `mix` and
    `finish`): opened from disk, it shows the original and every variant at the same size and place,
-   switched with the keys 1, 2, 3... (hold the photo or Space for the original, Z for full size).
+   switched with the keys 1, 2, 3... (Space or holding the photo shows the original, Z full size).
    Let them pick.
 4. **Finish** the pick (~1-2 min):
    ```bash

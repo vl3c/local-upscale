@@ -1,8 +1,8 @@
 """compare.html: a local page to flip between the original, the variants and the finals.
 
 Every image is shown at the same size and in the same place; the number keys 1, 2, 3 ... (or the
-buttons) switch between them, holding the photo (or Space) shows the original, Z zooms to full
-size. The page links the images next to it by relative path, so it works opened straight from disk,
+buttons) switch between them, holding the photo shows the original, Space switches to it (a tap)
+or shows it while held, Z zooms to full size. The page links the images next to it by relative path, so it works opened straight from disk,
 and loads nothing from the network.
 """
 from __future__ import annotations
@@ -130,13 +130,15 @@ TEMPLATE = """<!doctype html>
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;
   display:flex;flex-direction:column;overflow:hidden}
-header{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px 16px}
+header{display:flex;flex-direction:column;gap:8px;padding:8px 16px 10px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
 h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40ch}
-.tabs{display:flex;flex-wrap:wrap;gap:6px}
-.tabs button{font:600 13px system-ui,sans-serif;border:1px solid var(--line);background:var(--surface);color:var(--fg);
-  border-radius:999px;padding:5px 12px 5px 6px;cursor:pointer;display:flex;align-items:center;gap:7px}
-.tabs button kbd{font:600 12px ui-monospace,Consolas,monospace;min-width:20px;height:20px;display:grid;place-items:center;
+.tabs{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.tabs button{font:600 19.5px system-ui,sans-serif;border:1px solid var(--line);background:var(--surface);color:var(--fg);
+  border-radius:999px;padding:6px 18px 6px 8px;cursor:pointer;display:flex;align-items:center;gap:10px}
+.tabs button kbd{font:600 18px ui-monospace,Consolas,monospace;min-width:30px;height:30px;display:grid;place-items:center;
   border-radius:999px;background:var(--line);color:var(--fg)}
+.tabs button.peek{border-color:var(--accent)}
 .tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .tabs button[aria-pressed="true"] kbd{background:var(--accent-ink);color:var(--accent)}
 .tabs button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
@@ -153,9 +155,11 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
 </head>
 <body>
 <header>
-  <h1>{TITLE}</h1>
+  <div class="top">
+    <h1>{TITLE}</h1>
+    <span class="hint">1, 2, 3&hellip; or &larr; &rarr; switch<span id="holdhint"> &middot; Space: original (tap to switch, hold to peek) &middot; hold the photo: original</span> &middot; Z or double-click: full size</span>
+  </div>
   <div class="tabs" id="tabs" role="group" aria-label="Choose image"></div>
-  <span class="hint">1, 2, 3&hellip; or &larr; &rarr; switch<span id="holdhint"> &middot; hold the photo or Space: original</span> &middot; Z or double-click: full size</span>
 </header>
 <div class="stage" id="stage"><div class="viewer" id="viewer"></div></div>
 <span class="tag" id="tag"></span>
@@ -164,7 +168,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
   var ITEMS = {DATA};
   var tabs = document.getElementById('tabs'), viewer = document.getElementById('viewer');
   var stage = document.getElementById('stage'), tag = document.getElementById('tag');
-  var imgs = [], btns = [], cur = 0, shown = 0, zoom = false;
+  var imgs = [], btns = [], cur = 0, shown = 0, zoom = false, peek = false, peekAt = 0;
   var orig = ITEMS.findIndex(function(it){ return it.original; });
   if (orig < 0) document.getElementById('holdhint').hidden = true;  // nothing to hold for
   ITEMS.forEach(function(it, i){
@@ -178,14 +182,17 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
     b.addEventListener('click', function(){ pick(i); b.blur(); });
     tabs.appendChild(b); btns.push(b);
   });
+  var bw = Math.max.apply(null, btns.map(function(b){ return b.offsetWidth; }));
+  btns.forEach(function(b){ b.style.minWidth = bw + 'px'; b.style.justifyContent = 'center'; });
   function show(i){
     shown = i;
+    btns.forEach(function(b, k){ b.classList.toggle('peek', k === i && k !== cur); });
     imgs.forEach(function(im, k){ im.classList.toggle('on', k === i); });
     var im = imgs[i];
     tag.textContent = ITEMS[i].label + (im.naturalWidth ? '  ' + im.naturalWidth + ' \\u00d7 ' + im.naturalHeight : '');
   }
   function pick(i){
-    cur = i;
+    cur = i; peek = false;
     btns.forEach(function(b, k){ b.setAttribute('aria-pressed', k === i ? 'true' : 'false'); });
     show(i);
     try { history.replaceState(null, '', '#' + (i + 1)); } catch (e) {}
@@ -230,7 +237,7 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
     if (down.pan) { stage.scrollLeft = down.sl - dx; stage.scrollTop = down.st - dy; }
   });
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function(t){
-    viewer.addEventListener(t, function(){ if (down) { down = null; show(cur); } });
+    viewer.addEventListener(t, function(){ if (down) { down = null; peek = false; show(cur); } });
   });
   viewer.addEventListener('dblclick', function(e){ setZoom(!zoom, e); });
   viewer.addEventListener('contextmenu', function(e){ e.preventDefault(); });
@@ -241,14 +248,18 @@ h1{font-size:16px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
     if (i >= 0) pick(i);
     else if (k === 'arrowright') pick((cur + 1) % n);
     else if (k === 'arrowleft') pick((cur + n - 1) % n);
-    else if (k === ' ') { if (!e.repeat && orig >= 0) show(orig); }
+    else if (k === ' ') {  // a tap switches to the original and back; a hold shows it until released
+      if (!e.repeat && orig >= 0) { peek = !peek; peekAt = Date.now(); show(peek ? orig : cur); }
+    }
     else if (k === 'z') setZoom(!zoom);
     else if (k === 'escape' && zoom) setZoom(false);
     else return;
     e.preventDefault();
   });
-  document.addEventListener('keyup', function(e){ if (e.key === ' ') show(cur); });
-  window.addEventListener('blur', function(){ show(cur); });
+  document.addEventListener('keyup', function(e){
+    if (e.key === ' ' && peek && Date.now() - peekAt > 300) { peek = false; show(cur); }
+  });
+  window.addEventListener('blur', function(){ peek = false; show(cur); });
   window.addEventListener('resize', layout);
   var start = parseInt((location.hash || '').slice(1), 10) - 1;
   pick(start >= 0 && start < ITEMS.length ? start : Math.min(1, ITEMS.length - 1));
