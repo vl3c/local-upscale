@@ -58,3 +58,23 @@ def test_square_crop_pads_instead_of_stretching():
     im = np.full((100, 100, 3), 200, np.uint8)
     c = faces.square_crop(im, 5, 50, 30)
     assert c.shape == (60, 60, 3) and c[30, 0].sum() == 0 and c[30, 59].sum() == 600
+
+
+def test_quiet_opencv_hides_warnings_and_restores_the_level():
+    log = cv2.utils.logging
+    before = log.getLogLevel()
+    with faces._quiet_opencv():
+        assert log.getLogLevel() == log.LOG_LEVEL_ERROR
+    assert log.getLogLevel() == before
+    try:
+        with faces._quiet_opencv():
+            raise ValueError
+    except ValueError:
+        pass
+    assert log.getLogLevel() == before
+    log.setLogLevel(log.LOG_LEVEL_SILENT)   # a user who silenced OpenCV stays silenced
+    try:
+        with faces._quiet_opencv():
+            assert log.getLogLevel() == log.LOG_LEVEL_SILENT
+    finally:
+        log.setLogLevel(before)
