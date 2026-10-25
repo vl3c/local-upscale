@@ -91,7 +91,8 @@ def next_number(d: Path) -> int:
 
 
 def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: list[int] | None = None,
-             keep_server: bool = False, log=print) -> Path:
+             keep_server: bool = False, also: str | None = None, prompt: str | None = None,
+             log=print) -> Path:
     """Four Qwen restorations (two seeds x 2), delivered at the photo's own size for flipping."""
     photo = Path(photo).resolve()
     d, v, w = folders(photo)
@@ -108,7 +109,9 @@ def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: 
     if used is not None and used > 4000:
         log(f"warning: {used} MB of VRAM already in use; local-image needs ~15.5 GB and may refuse to start")
     seeds = seeds or [random.randrange(1, 2**31) for _ in range(2)]
-    prompt = prompts.pick(colorize, bool(refs))
+    prompt = prompt or prompts.pick(colorize, bool(refs))
+    if also:  # first, so the base prompt's "keep the whole scene" reads as "everything else"
+        prompt = prompts.with_also(prompt, also)
     tmp = w / "_qwen"
     # local-image's server lives in its own window, so closing the job's window doesn't stop it, and
     # the close can end this process before or during the finally below: stop it from the console
@@ -124,7 +127,7 @@ def variants(photo: Path, refs: list[Path] = (), colorize: bool = False, seeds: 
                 shutil.move(str(p), str(native_path(w, n)))
                 save(v / f"variant_{n}_{wd}x{h}.png", resize(native, wd, h))  # exact original proportions
                 info["variants"].append({"n": n, "seed": seed, "batch_index": k, "colorize": colorize,
-                                         "refs": [Path(r).name for r in refs],
+                                         "refs": [Path(r).name for r in refs], "also": also, "prompt": prompt,
                                          "native_size": [native.shape[1], native.shape[0]]})
                 save_info(w, info)
                 log(f"  variant {n}")

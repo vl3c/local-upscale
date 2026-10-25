@@ -44,7 +44,13 @@ error; the full log is in `logs/`.
    $PY scripts/upscale.py variants "input/photo.jpg"             # restore
    $PY scripts/upscale.py variants "input/photo.jpg" --colorize  # black-and-white photo
    $PY scripts/upscale.py variants "input/photo.jpg" --ref "input/other.jpg"   # identity reference(s)
+   $PY scripts/upscale.py variants "input/photo.jpg" --also "Remove the blue helmet from the seat"  # extra edit
+   $PY scripts/upscale.py variants "input/photo.jpg" --prompt "..."   # own instruction (refs passed as given)
    ```
+   For an object removal, the model also redraws nearby parts (a seat, a handle) and the rest of
+   the photo: keep only the removed object's area from a variant, pasted into the original through a
+   hand-drawn mask, then run the clarity variants on that. Several reference images make Qwen
+   reframe or return a different scene.
    Run it in the background and tell the user it's running in its window. Then **Read**
    `output/<photo>/variants/contact_sheet.jpg` and `faces.jpg` yourself, and tell the user what
    differs between the variants: face shape, expression, colour, sharpness, any invented text. Give
