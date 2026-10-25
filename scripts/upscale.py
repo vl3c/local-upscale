@@ -2,7 +2,7 @@
 
     python scripts/upscale.py status
     python scripts/upscale.py crop     input/photo.jpg [--inset 0.02] [--corners x1,y1,...,x4,y4]
-    python scripts/upscale.py variants input/photo.jpg [--ref other.jpg ...] [--colorize] [--seeds A B]
+    python scripts/upscale.py variants input/photo.jpg [--ref other.jpg ...] [--colorize] [--seeds A B] [--also TEXT | --prompt TEXT]
     python scripts/upscale.py mix      input/photo.jpg --base 3 [--face 1=2 2=4]
     python scripts/upscale.py finish   input/photo.jpg --variant 2 [--full] [--no-sharpened] [--model 7b|7b-sharp|3b]
     python scripts/upscale.py stop
@@ -70,6 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--colorize", action="store_true", help="black-and-white photo: restore and colorize")
     v.add_argument("--seeds", type=int, nargs=2, help="two seeds (2 variants each); random if omitted")
     v.add_argument("--keep-server", action="store_true", help="leave the local-image server running")
+    v.add_argument("--prompt", help="replace the restore instruction entirely (refs are passed as given)")
+    v.add_argument("--also", help="an extra edit done with the restore, e.g. 'Remove the blue helmet from the seat'")
 
     m = add("mix", help="take faces from other variants into one (no --face: list the faces)")
     m.add_argument("photo", type=Path)
@@ -173,7 +175,8 @@ def main(argv=None) -> int:
         if a.cmd == "crop":
             return 0 if workflow.crop(a.photo, a.inset, a.corners, a.out) else 1
         if a.cmd == "variants":
-            workflow.variants(a.photo, a.ref, a.colorize, a.seeds, a.keep_server)
+            workflow.variants(a.photo, a.ref, a.colorize, a.seeds, a.keep_server, also=a.also,
+                              prompt=a.prompt)
         elif a.cmd == "mix":
             workflow.mix(a.photo, a.base, parse_picks(a.face))
         elif a.cmd == "finish":

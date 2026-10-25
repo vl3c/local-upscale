@@ -29,3 +29,9 @@ def pick(colorize: bool, refs: bool) -> str:
     if colorize:
         return COLORIZE_WITH_REFERENCES if refs else COLORIZE
     return WITH_REFERENCES if refs else RESTORE
+
+
+def with_also(prompt: str, also: str) -> str:
+    """An extra edit (variants --also) put before the restore, which then applies to everything else."""
+    also = also.strip().rstrip(".") + "."
+    return f"{also} Apart from that change: {prompt}"
